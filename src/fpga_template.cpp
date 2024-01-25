@@ -1,131 +1,27 @@
+#include <bitset>
 #include <iomanip>
 #include <iostream>
+#include <string_view>
+#include <vector>
 
 // oneAPI headers
+#include <sycl/ext/intel/experimental/pipes.hpp>
 #include <sycl/ext/intel/fpga_extensions.hpp>
 #include <sycl/sycl.hpp>
 
 #include "exception_handler.hpp"
-#include <array>
-#include <chrono>
-#include <random>
-#include <vector>
 
-constexpr auto ROWS = size_t{256};
-// One column takes ROWS steps, but after each element, the next column can
-// start. So, we allow ROWS pipeline steps to start another column after each
-// element.
-constexpr auto PIPELINE_DEPTH = ROWS;
+std::vector<std::string_view> find_strings(sycl::queue &q,
+                                           const std::string &input);
 
-using Element = uint8_t;
-using Column = std::array<Element, ROWS>;
-using Matrix = std::vector<Column>;
-using Duration = std::chrono::nanoseconds;
+constexpr auto CACHE_LINE_SIZE = size_t{8};
+constexpr auto PIPELINE_DEPTH = size_t{1};
+using CacheLine = std::array<char, CACHE_LINE_SIZE>;
+struct Bitmaps;
 
-Matrix generate_input(size_t column_count) {
-  std::random_device rd;
-  std::uniform_int_distribution<Element> dist(0, 255);
-
-  auto data = Matrix(column_count);
-  for (auto &column : data) {
-    for (auto &element : column) {
-      element = dist(rd);
-    }
-  }
-  return data;
-}
-
-/**
- * Perform a highly data-dependent operation on M.
- * Reference implementation for validation.
- * @param O Matrix to operate on.
- */
-void matrix_sum(const Matrix &I, Matrix &O) {
-  assert(I.size() == O.size());
-  // Cache last column.
-  auto prev_in_row = Column{};
-  const auto col_count = O.size();
-  for (auto col_i = size_t{0}; col_i < col_count; col_i++) {
-    // Cache previous element in column.
-    auto prev_in_col = Element{};
-    for (auto row_i = size_t{0}; row_i < ROWS; row_i++) {
-      auto input = I[col_i][row_i];
-      auto output = input + prev_in_row[row_i] + prev_in_col;
-      O[col_i][row_i] = prev_in_row[row_i] = prev_in_col = output;
-    }
-  }
-}
-
-/**
- * Compute reference value on CPU.
- * @param input Data to compute result to.
- * @param output Output to write result into.
- */
-Duration compute_cpu(const Matrix &input, Matrix &output) {
-  const auto before = std::chrono::high_resolution_clock ::now();
-  matrix_sum(input, output);
-  const auto after = std::chrono::high_resolution_clock ::now();
-  auto duration = after - before;
-  return std::chrono::duration_cast<Duration>(duration);
-}
-
-/**
- * Compute on FPGA but sequentially, without pipelining.
- * @param q Queue to use.
- * @param input Data to compute result to.
- * @param output Output to write result into.
- * @returns Duration of computation.
- */
-Duration compute_seq(sycl::queue &q, const Matrix &input, Matrix &output);
-
-/**
- * Compute on FPGA but pipelined, hopefully faster.
- * @param q Queue to use.
- * @param input Data to compute result to.
- * @param output Output to write result into.
- * @returns Duration of computation.
- */
-Duration compute_pipe(sycl::queue &q, const Matrix &input, Matrix &output);
-
-/**
- * Validate two results are equal.
- * @param expect Expected value.
- * @param value Computed value.
- * @return Whether both are equal.
- */
-bool validate(const Matrix &expect, const Matrix &value) {
-  if (expect.size() != value.size()) {
-    return false;
-  }
-  for (auto col_i = size_t{0}; col_i < expect.size(); col_i++) {
-    for (auto row_i = size_t{0}; row_i < ROWS; row_i++) {
-      if (expect[col_i][row_i] != value[col_i][row_i]) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-void print(const Matrix &M);
-
+void start_kernels(sycl::queue &q, size_t count);
+Bitmaps build_bitmaps(const CacheLine &cache_line);
 int main(int argc, char **argv) {
-  constexpr auto COLUMN_COUNT = ROWS * 10;
-  auto column_count = COLUMN_COUNT;
-  if (argc > 1) {
-    errno = 0;
-    auto count_arg = argv[1];
-    column_count = std::strtoull(count_arg, nullptr, 10);
-    if (errno) {
-      perror("Parsing column count failed with error");
-      std::cout << "Failed to parse column count, using fallback value.\n";
-      column_count = COLUMN_COUNT;
-    }
-  }
-  std::cout << "Executing with " << column_count << " columns.\n";
-
-  bool passed = false;
-
   try {
 
     // Use compile-time macros to select either:
@@ -149,38 +45,9 @@ int main(int argc, char **argv) {
               << device.get_info<sycl::info::device::name>().c_str()
               << std::endl;
 
-    // Create inputs and outputs.
-    const auto input = generate_input(column_count);
-    //    print(input);
-    auto output_cpu = Matrix(column_count);
-    auto output_seq = Matrix(column_count);
-    auto output_pipe = Matrix(column_count);
+    constexpr auto input = R"("k":"value", "k\"y": "\"", "key": "unescaped\"")";
 
-    // Run benchmarks.
-    const auto duration_cpu = compute_cpu(input, output_cpu);
-    const auto duration_seq = compute_seq(q, input, output_seq);
-    const auto duration_pipe = compute_pipe(q, input, output_pipe);
-
-    // Validate results.
-    passed = true;
-    if (!validate(output_cpu, output_seq)) {
-      passed = false;
-      std::cout << "Sequential: FAIL\n";
-    } else {
-      std::cout << "Sequential: PASS\n";
-    }
-
-    if (!validate(output_cpu, output_pipe)) {
-      passed = false;
-      std::cout << "Pipelined:  FAIL\n";
-    } else {
-      std::cout << "Pipelined:  PASS\n";
-    }
-
-    // Print out computation times.
-    std::cout << "CPU took  " << duration_cpu.count() << " nanoseconds\n";
-    std::cout << "Seq took  " << duration_seq.count() << " nanoseconds\n";
-    std::cout << "Pipe took " << duration_pipe.count() << " nanoseconds\n ";
+    auto strings = find_strings(q, input);
 
   } catch (sycl::exception const &e) {
     // Catches exceptions in the host code.
@@ -197,91 +64,106 @@ int main(int argc, char **argv) {
     std::terminate();
   }
 
-  return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+  return EXIT_SUCCESS;
 }
 
-Duration compute_seq(sycl::queue &q, const Matrix &input, Matrix &output) {
-  assert(input.size() == output.size());
+using InputPipe =
+    sycl::ext::intel::experimental::pipe<class InputPipeID, CacheLine,
+                                         PIPELINE_DEPTH>;
 
-  auto input_buffer = sycl::buffer(input);
-  auto output_buffer = sycl::buffer(output);
+std::vector<std::string_view> find_strings(sycl::queue &q,
+                                           const std::string &input) {
+  auto cache_line_count = input.size() / CACHE_LINE_SIZE;
+  start_kernels(q, cache_line_count + 1);
 
-  const auto col_count = output.size();
+  // Send data to device.
+  auto index = size_t{0};
+  for (; index < cache_line_count; ++index) {
+    auto begin = input.begin() + index * CACHE_LINE_SIZE;
+    auto end = input.begin() + (index + 1) * CACHE_LINE_SIZE;
+    auto line = CacheLine{};
+    std::copy(begin, end, line.begin());
+    InputPipe::write(q, line);
+  }
+  // Handle any overflowing bytes.
+  auto begin = input.begin() + index * CACHE_LINE_SIZE;
+  auto end = input.end();
+  auto line = CacheLine{'\0'};
+  std::copy(begin, end, line.begin());
+  InputPipe::write(q, line);
 
-  auto before = std::chrono::high_resolution_clock ::now();
+  return std::vector<std::string_view>();
+}
+
+using Bitmap = std::bitset<CACHE_LINE_SIZE>;
+
+struct OverflowBits {
+  bool is_string;
+  bool is_odd;
+};
+
+struct Bitmaps {
+  Bitmap is_string;
+  OverflowBits overflows;
+};
+
+const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
+  for (auto index = size_t{0}; index < CACHE_LINE_SIZE; ++index) {
+    stream << (map[index] ? '1' : '0');
+  }
+  return stream;
+}
+
+using OverflowPipe =
+    sycl::ext::intel::pipe<class OverflowPipeId, OverflowBits, PIPELINE_DEPTH>;
+
+void start_kernels(sycl::queue &q, size_t count) {
   q.submit([&](auto &h) {
-    auto input_accessor = sycl::accessor(input_buffer, h, sycl::read_only);
-    auto output_accessor = sycl::accessor(output_buffer, h, sycl::read_write);
+    auto out = sycl::stream(4096, 1024, h);
 
-    h.single_task([=]() {
-      auto prev_in_row = Column{};
-      for (auto col_i = size_t{0}; col_i < col_count; col_i++) {
-        auto prev_in_col = Element{};
-        for (auto row_i = size_t{0}; row_i < ROWS; row_i++) {
-          auto input = input_accessor[col_i][row_i];
-          auto output = input + prev_in_row[row_i] + prev_in_col;
-          output_accessor[col_i][row_i] = prev_in_row[row_i] = prev_in_col =
-              output;
+    h.template single_task<class ComputeKernel>([=]() {
+      for (auto index = size_t{0}; index < count; ++index) {
+        // 1. Read line from input.
+        auto input = InputPipe::read();
+
+        out << "Block #" << index << "\n";
+        out << "input: ";
+        for (auto c : input) {
+          out << c;
         }
+        out << "\n";
+
+        // 2. Build bitmaps for string and odd quotes.
+        auto bitmaps = build_bitmaps(input);
+        out << "strng: " << bitmaps.is_string << "\n"
+            << "ovstr: " << bitmaps.overflows.is_string << "\n"
+            << "ovodd: " << bitmaps.overflows.is_odd << "\n";
       }
+
+      // 3. Read overflow bits and modify own bitmaps.
+      // TODO: Simply flipping our bitmaps does not work here, as a string like
+      // ("\|\" other) would classify other as not string, even though the
+      // backslash was escaped in the previous block.
+      auto last_overflow = OverflowPipe::read();
+
+      // 4. Push out to next step.
     });
   });
-  q.wait();
-  auto after = std::chrono::high_resolution_clock ::now();
-  return after - before;
 }
 
-template <size_t I> class PipeID;
-template <size_t I>
-using Pipe = sycl::ext::intel::pipe<PipeID<I>, Element, PIPELINE_DEPTH>;
-
-template <size_t RowId, typename InAcc, typename OutAcc>
-void compute_elements(Element &prev_in_col, const size_t col_id, InAcc &in_acc,
-                      OutAcc &out_acc) {
-  if constexpr (RowId < ROWS) {
-    auto input = in_acc[col_id][RowId];
-    auto prev_in_row = Element{0};
-    if (col_id != 0) {
-      prev_in_row = Pipe<RowId>::read();
+Bitmaps build_bitmaps(const CacheLine &cache_line) {
+  auto bitmaps = Bitmaps{};
+  auto is_string = false;
+  auto is_odd = false;
+  for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE;
+       ++byte_index) {
+    if (!is_odd && cache_line[byte_index] == '\"') {
+      is_string = !is_string;
+    } else if (is_string && cache_line[byte_index] == '\\') {
+      is_odd = !is_odd;
     }
-    auto output = input + prev_in_row + prev_in_col;
-    Pipe<RowId>::write(output);
-    out_acc[col_id][RowId] = prev_in_col = output;
-    compute_elements<RowId + 1>(prev_in_col, col_id, in_acc, out_acc);
+    bitmaps.is_string[byte_index] = is_string;
   }
-}
-
-Duration compute_pipe(sycl::queue &q, const Matrix &input, Matrix &output) {
-  assert(input.size() == output.size());
-
-  auto input_buffer = sycl::buffer(input);
-  auto output_buffer = sycl::buffer(output);
-
-  const auto col_count = output.size();
-
-  auto before = std::chrono::high_resolution_clock ::now();
-  for (auto col_id = size_t{0}; col_id < col_count; col_id++) {
-    q.submit([&](auto &h) {
-      auto in_acc = sycl::accessor(input_buffer, h, sycl::read_only);
-      auto out_acc = sycl::accessor(output_buffer, h, sycl::write_only);
-      h.template single_task<class ComputeSingleColumn>([=]() {
-        auto prev_in_col = Element{};
-        compute_elements<0>(prev_in_col, col_id, in_acc, out_acc);
-      });
-    });
-  }
-  q.wait();
-  auto after = std::chrono::high_resolution_clock ::now();
-  return after - before;
-}
-
-void print(const Matrix &M) {
-  for (auto row_id = size_t{0}; row_id < ROWS; row_id++) {
-    std::cout << "Row #" << row_id << ": ";
-    for (auto col_id = size_t{0}; col_id < M.size(); col_id++) {
-      std::cout << std::setfill('0') << std::setw(2) << std::right << std::hex
-                << int(M[col_id][row_id]) << " ";
-    }
-    std::cout << "\n";
-  }
+  bitmaps.overflows = OverflowBits{.is_string = is_string, .is_odd = is_odd};
+  return bitmaps;
 }
