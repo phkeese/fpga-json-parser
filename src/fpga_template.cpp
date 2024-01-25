@@ -235,20 +235,15 @@ template <size_t I> class PipeID;
 template <size_t I>
 using Pipe = sycl::ext::intel::pipe<PipeID<I>, Element, PIPELINE_DEPTH>;
 
-// Feed all pipes with an element.
-template <size_t RowId> void feed_pipe(Element value) {
-  Pipe<RowId>::write(value);
-  if constexpr (RowId < ROWS) {
-    feed_pipe<RowId + 1>(value);
-  }
-}
-
 template <size_t RowId, typename InAcc, typename OutAcc>
 void compute_elements(Element &prev_in_col, const size_t col_id, InAcc &in_acc,
                       OutAcc &out_acc) {
   if constexpr (RowId < ROWS) {
     auto input = in_acc[col_id][RowId];
-    auto prev_in_row = Pipe<RowId>::read();
+    auto prev_in_row = Element{0};
+    if (col_id != 0) {
+      prev_in_row = Pipe<RowId>::read();
+    }
     auto output = input + prev_in_row + prev_in_col;
     Pipe<RowId>::write(output);
     out_acc[col_id][RowId] = prev_in_col = output;
@@ -264,17 +259,17 @@ Duration compute_pipe(sycl::queue &q, const Matrix &input, Matrix &output) {
 
   const auto col_count = output.size();
 
-  // Feed pipelines.
-  q.single_task([=]() { feed_pipe<0>(Element{}); });
   auto before = std::chrono::high_resolution_clock ::now();
-  q.submit([&](auto &h) {
-    auto in_acc = sycl::accessor(input_buffer, h, sycl::read_only);
-    auto out_acc = sycl::accessor(output_buffer, h, sycl::write_only);
-    h.parallel_for(col_count, [=](auto col_id) {
-      auto prev_in_col = Element{};
-      compute_elements<0>(prev_in_col, col_id.get_linear_id(), in_acc, out_acc);
+  for (auto col_id = size_t{0}; col_id < col_count; col_id++) {
+    q.submit([&](auto &h) {
+      auto in_acc = sycl::accessor(input_buffer, h, sycl::read_only);
+      auto out_acc = sycl::accessor(output_buffer, h, sycl::write_only);
+      h.template single_task<class ComputeSingleColumn>([=]() {
+        auto prev_in_col = Element{};
+        compute_elements<0>(prev_in_col, col_id, in_acc, out_acc);
+      });
     });
-  });
+  }
   q.wait();
   auto after = std::chrono::high_resolution_clock ::now();
   return after - before;
