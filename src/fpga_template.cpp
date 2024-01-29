@@ -8,14 +8,15 @@
 #include <sycl/ext/intel/experimental/pipes.hpp>
 #include <sycl/ext/intel/fpga_extensions.hpp>
 #include <sycl/sycl.hpp>
-
 #include "exception_handler.hpp"
 
-std::vector<std::string_view> find_strings(sycl::queue &q,
-                                           std::string input);
 
+// Constants
 constexpr auto CACHE_LINE_SIZE = size_t{8};
 constexpr auto PIPELINE_DEPTH = size_t{1};
+
+
+// Types
 using CacheLine = std::array<char, CACHE_LINE_SIZE>;
 struct Bitmaps;
 
@@ -32,11 +33,25 @@ struct Bitmaps {
   Overflows overflows;
 };
 
-void start_kernels(sycl::queue &q, size_t count);
+
+// Functions
+std::vector<std::string_view> find_strings(sycl::queue &q,
+                                           std::string input);
+
+void start_kernels(sycl::queue &q, const size_t count);
+
 Bitmaps build_bitmaps(const CacheLine &cache_line, const Overflows last_overflow);
+
+
+// Pipes
+using InputPipe =
+    sycl::ext::intel::experimental::pipe<class InputPipeID, CacheLine,
+                                         PIPELINE_DEPTH>;
+
+
+// Main function
 int main(int argc, char **argv) {
   try {
-
     // Use compile-time macros to select either:
     //  - the FPGA emulator device (CPU emulation of the FPGA)
     //  - the FPGA device (a real FPGA)
@@ -80,10 +95,8 @@ int main(int argc, char **argv) {
   return EXIT_SUCCESS;
 }
 
-using InputPipe =
-    sycl::ext::intel::experimental::pipe<class InputPipeID, CacheLine,
-                                         PIPELINE_DEPTH>;
 
+// Function definitions
 std::vector<std::string_view> find_strings(sycl::queue &q,
                                            std::string input) {
   // Append whitespaces to input to make it a multiple of CACHE_LINE_SIZE.
@@ -113,10 +126,7 @@ const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
   return stream;
 }
 
-using OverflowPipe =
-    sycl::ext::intel::pipe<class OverflowPipeId, Overflows, PIPELINE_DEPTH>;
-
-void start_kernels(sycl::queue &q, size_t count) {
+void start_kernels(sycl::queue &q, const size_t count) {
   q.submit([&](auto &h) {
     auto out = sycl::stream(4096, 1024, h);
 
