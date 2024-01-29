@@ -61,6 +61,8 @@
 .idea/**/uiDesigner.xml
 .idea/**/dbnavigator.xml
 
+.vscode
+
 # Gradle
 .idea/**/gradle.xml
 .idea/**/libraries
