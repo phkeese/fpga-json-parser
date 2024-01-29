@@ -12,15 +12,28 @@
 #include "exception_handler.hpp"
 
 std::vector<std::string_view> find_strings(sycl::queue &q,
-                                           const std::string &input);
+                                           std::string input);
 
 constexpr auto CACHE_LINE_SIZE = size_t{8};
 constexpr auto PIPELINE_DEPTH = size_t{1};
 using CacheLine = std::array<char, CACHE_LINE_SIZE>;
 struct Bitmaps;
 
+using Bitmap = std::bitset<CACHE_LINE_SIZE>;
+
+struct Overflows {
+  bool string_overflow = false;
+  bool backslash_overflow = false;
+  bool number_overflow = false;
+};
+
+struct Bitmaps {
+  Bitmap is_string;
+  Overflows overflows;
+};
+
 void start_kernels(sycl::queue &q, size_t count);
-Bitmaps build_bitmaps(const CacheLine &cache_line);
+Bitmaps build_bitmaps(const CacheLine &cache_line, const Overflows last_overflow);
 int main(int argc, char **argv) {
   try {
 
@@ -72,9 +85,13 @@ using InputPipe =
                                          PIPELINE_DEPTH>;
 
 std::vector<std::string_view> find_strings(sycl::queue &q,
-                                           const std::string &input) {
+                                           std::string input) {
+  // Append whitespaces to input to make it a multiple of CACHE_LINE_SIZE.
+  auto whitespaces_to_append = CACHE_LINE_SIZE - (input.size() % CACHE_LINE_SIZE);
+  input.append(whitespaces_to_append, ' ');
+
   auto cache_line_count = input.size() / CACHE_LINE_SIZE;
-  start_kernels(q, cache_line_count + 1);
+  start_kernels(q, cache_line_count);
 
   // Send data to device.
   auto index = size_t{0};
@@ -85,27 +102,9 @@ std::vector<std::string_view> find_strings(sycl::queue &q,
     std::copy(begin, end, line.begin());
     InputPipe::write(q, line);
   }
-  // Handle any overflowing bytes.
-  auto begin = input.begin() + index * CACHE_LINE_SIZE;
-  auto end = input.end();
-  auto line = CacheLine{'\0'};
-  std::copy(begin, end, line.begin());
-  InputPipe::write(q, line);
 
   return std::vector<std::string_view>();
 }
-
-using Bitmap = std::bitset<CACHE_LINE_SIZE>;
-
-struct OverflowBits {
-  bool is_string;
-  bool is_odd;
-};
-
-struct Bitmaps {
-  Bitmap is_string;
-  OverflowBits overflows;
-};
 
 const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
   for (auto index = size_t{0}; index < CACHE_LINE_SIZE; ++index) {
@@ -115,13 +114,14 @@ const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
 }
 
 using OverflowPipe =
-    sycl::ext::intel::pipe<class OverflowPipeId, OverflowBits, PIPELINE_DEPTH>;
+    sycl::ext::intel::pipe<class OverflowPipeId, Overflows, PIPELINE_DEPTH>;
 
 void start_kernels(sycl::queue &q, size_t count) {
   q.submit([&](auto &h) {
     auto out = sycl::stream(4096, 1024, h);
 
     h.template single_task<class ComputeKernel>([=]() {
+      auto last_overflow = Overflows{};
       for (auto index = size_t{0}; index < count; ++index) {
         // 1. Read line from input.
         auto input = InputPipe::read();
@@ -134,36 +134,40 @@ void start_kernels(sycl::queue &q, size_t count) {
         out << "\n";
 
         // 2. Build bitmaps for string and odd quotes.
-        auto bitmaps = build_bitmaps(input);
+        auto bitmaps = build_bitmaps(input, last_overflow);
         out << "strng: " << bitmaps.is_string << "\n"
-            << "ovstr: " << bitmaps.overflows.is_string << "\n"
-            << "ovodd: " << bitmaps.overflows.is_odd << "\n";
+            << "ovstr: " << bitmaps.overflows.string_overflow << "\n"
+            << "ovodd: " << bitmaps.overflows.backslash_overflow << "\n";
+
+        last_overflow = bitmaps.overflows;
       }
 
       // 3. Read overflow bits and modify own bitmaps.
       // TODO: Simply flipping our bitmaps does not work here, as a string like
       // ("\|\" other) would classify other as not string, even though the
       // backslash was escaped in the previous block.
-      auto last_overflow = OverflowPipe::read();
+      //auto last_overflow = OverflowPipe::read();
 
       // 4. Push out to next step.
     });
   });
 }
 
-Bitmaps build_bitmaps(const CacheLine &cache_line) {
+Bitmaps build_bitmaps(const CacheLine &cache_line, const Overflows last_overflow) {
   auto bitmaps = Bitmaps{};
-  auto is_string = false;
-  auto is_odd = false;
+  auto is_string = last_overflow.string_overflow;
+  auto is_odd = last_overflow.backslash_overflow;
   for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE;
        ++byte_index) {
     if (!is_odd && cache_line[byte_index] == '\"') {
       is_string = !is_string;
-    } else if (is_string && cache_line[byte_index] == '\\') {
+    } else if (cache_line[byte_index] == '\\') {
       is_odd = !is_odd;
+    } else if (is_odd) {
+      is_odd = false;
     }
     bitmaps.is_string[byte_index] = is_string;
   }
-  bitmaps.overflows = OverflowBits{.is_string = is_string, .is_odd = is_odd};
+  bitmaps.overflows = Overflows{.string_overflow = is_string, .backslash_overflow= is_odd};
   return bitmaps;
 }
