@@ -30,6 +30,7 @@ struct Overflows {
 
 struct Bitmaps {
   Bitmap is_string;
+  Bitmap is_escaped;
   Overflows overflows;
 };
 
@@ -48,6 +49,17 @@ using InputPipe =
     sycl::ext::intel::experimental::pipe<class InputPipeID, CacheLine,
                                          PIPELINE_DEPTH>;
 
+using CachelineToStringFilterPipe =
+    sycl::ext::intel::experimental::pipe<class CachelineToStringFilterPipeID, CacheLine,
+                                         PIPELINE_DEPTH>;
+
+using BitmapsToStringFilterPipe =
+    sycl::ext::intel::experimental::pipe<class BitmapsToStringFilterPipeID, Bitmaps,
+                                         PIPELINE_DEPTH>;
+
+using CharOutputPipe =
+    sycl::ext::intel::experimental::pipe<class CharOutputPipeID, char,
+                                         PIPELINE_DEPTH>;
 
 // Main function
 int main(int argc, char **argv) {
@@ -114,6 +126,7 @@ std::vector<std::string_view> find_strings(sycl::queue &q,
     auto line = CacheLine{};
     std::copy(begin, end, line.begin());
     InputPipe::write(q, line);
+    CachelineToStringFilterPipe::write(q, line);
   }
 
   return std::vector<std::string_view>();
@@ -146,19 +159,37 @@ void start_kernels(sycl::queue &q, const size_t count) {
         // 2. Build bitmaps for string and odd quotes.
         auto bitmaps = build_bitmaps(input, last_overflow);
         out << "strng: " << bitmaps.is_string << "\n"
+            << "escpd: " << bitmaps.is_escaped << "\n"
             << "ovstr: " << bitmaps.overflows.string_overflow << "\n"
             << "ovodd: " << bitmaps.overflows.backslash_overflow << "\n";
 
+        // 3. Save last overflow.
         last_overflow = bitmaps.overflows;
+
+        // 4. Send bitmaps to next step.
+        BitmapsToStringFilterPipe::write(bitmaps);
       }
+    });
+  });
+}
 
-      // 3. Read overflow bits and modify own bitmaps.
-      // TODO: Simply flipping our bitmaps does not work here, as a string like
-      // ("\|\" other) would classify other as not string, even though the
-      // backslash was escaped in the previous block.
-      //auto last_overflow = OverflowPipe::read();
+void start_string_filter(sycl::queue &q, const size_t count) {
+  std::vector<char> output;
+  q.submit([&](auto &h) {
+    h.template single_task<class StringFilterKernel>([=]() {
+      for (auto index = size_t{0}; index < count; ++index) {
+        auto bitmaps = BitmapsToStringFilterPipe::read();
+        auto input = CachelineToStringFilterPipe::read();
 
-      // 4. Push out to next step.
+        for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
+          const auto c = input[byte_index];
+          if (bitmaps.is_string[byte_index]) {
+            if ((c != '\"' && c != '\\') || bitmaps.is_escaped[byte_index]) {
+              CharOutputPipe::write(c);
+            }
+          }
+        }
+      }
     });
   });
 }
@@ -169,13 +200,16 @@ Bitmaps build_bitmaps(const CacheLine &cache_line, const Overflows last_overflow
   auto is_odd = last_overflow.backslash_overflow;
   for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE;
        ++byte_index) {
+    bitmaps.is_escaped[byte_index] = is_odd;
+
     if (!is_odd && cache_line[byte_index] == '\"') {
       is_string = !is_string;
-    } else if (cache_line[byte_index] == '\\') {
-      is_odd = !is_odd;
+    } else if (!is_odd && cache_line[byte_index] == '\\') {
+      is_odd = true;
     } else if (is_odd) {
       is_odd = false;
     }
+
     bitmaps.is_string[byte_index] = is_string;
   }
   bitmaps.overflows = Overflows{.string_overflow = is_string, .backslash_overflow= is_odd};
