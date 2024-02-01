@@ -19,7 +19,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 ###############################################################################
 ### Customize these build variables
 ###############################################################################
-set(SOURCE_FILES src/fpga_template.cpp)
+set(SOURCE_FILES src/fpga_template.cpp src/bitmaps.hpp src/definitions.hpp)
 set(TARGET_NAME fpga_template)
 
 # Use cmake -DFPGA_DEVICE=<board-support-package>:<board-variant> to choose a
