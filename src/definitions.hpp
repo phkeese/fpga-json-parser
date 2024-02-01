@@ -14,15 +14,13 @@ struct Bitmaps;
 using Bitmap = std::bitset<CACHE_LINE_SIZE>;
 
 /// Possible overflow types.
-enum OverflowType : uint8_t {
+enum OverflowState : uint8_t {
 	/// No overflow.
 	None = 0,
 	/// An unfinished string at the end of this line.
 	String,
 	/// An unfinished string with a backslash at the end.
 	StringWithBackslash,
-	/// An unfinished number.
-	Number,
 	/// Number of items in this enum.
 	COUNT,
 };
@@ -36,6 +34,6 @@ struct Overflows {
 struct Bitmaps {
 	Bitmap is_string;
 	Bitmap is_escaped;
-	OverflowType overflow_type;
+	OverflowState overflow_state;
 	Overflows overflows;
 };

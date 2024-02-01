@@ -106,43 +106,8 @@ const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
 	return stream;
 }
 
-using MyInPipe = sycl::ext::intel::pipe<class MyInPipeId, CacheLine, PIPELINE_DEPTH>;
-using MyOutPipe = sycl::ext::intel::pipe<class MyOutPipeId, CacheLine, PIPELINE_DEPTH>;
-
 void start_kernels(sycl::queue &q, const size_t count) {
-	compute_bitmaps<MyInPipe, MyOutPipe>(q, count);
-
-	q.submit([&](auto &h) {
-		auto out = sycl::stream(4096, 1024, h);
-
-		h.template single_task<class ComputeKernel>([=]() {
-			auto last_overflow = Overflows{};
-			for (auto index = size_t{0}; index < count; ++index) {
-				// 1. Read line from input.
-				auto input = InputPipe::read();
-
-				out << "Block #" << index << "\n";
-				out << "input: ";
-				for (auto c : input) {
-					out << c;
-				}
-				out << "\n";
-
-				// 2. Build bitmaps for string and odd quotes.
-				auto bitmaps = build_bitmaps(input, last_overflow);
-				out << "strng: " << bitmaps.is_string << "\n"
-					<< "escpd: " << bitmaps.is_escaped << "\n"
-					<< "ovstr: " << bitmaps.overflows.string_overflow << "\n"
-					<< "ovodd: " << bitmaps.overflows.backslash_overflow << "\n";
-
-				// 3. Save last overflow.
-				last_overflow = bitmaps.overflows;
-
-				// 4. Send bitmaps to next step.
-				BitmapsToStringFilterPipe::write(bitmaps);
-			}
-		});
-	});
+	compute_bitmaps<InputPipe, BitmapsToStringFilterPipe>(q, count);
 }
 
 void start_string_filter(sycl::queue &q, const size_t count) {
@@ -164,25 +129,4 @@ void start_string_filter(sycl::queue &q, const size_t count) {
 			}
 		});
 	});
-}
-
-Bitmaps build_bitmaps(const CacheLine &cache_line, const Overflows last_overflow) {
-	auto bitmaps = Bitmaps{};
-	auto is_string = last_overflow.string_overflow;
-	auto is_odd = last_overflow.backslash_overflow;
-	for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
-		bitmaps.is_escaped[byte_index] = is_odd;
-
-		if (!is_odd && cache_line[byte_index] == '\"') {
-			is_string = !is_string;
-		} else if (!is_odd && cache_line[byte_index] == '\\') {
-			is_odd = true;
-		} else if (is_odd) {
-			is_odd = false;
-		}
-
-		bitmaps.is_string[byte_index] = is_string;
-	}
-	bitmaps.overflows = Overflows{.string_overflow = is_string, .backslash_overflow = is_odd};
-	return bitmaps;
 }
