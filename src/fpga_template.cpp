@@ -80,15 +80,34 @@ int main(int argc, char **argv) {
 	return EXIT_SUCCESS;
 }
 
+using DebugBitmapsPipe = sycl::ext::intel::experimental::pipe<class DebugBitmapsPipeId, Bitmaps, PIPELINE_DEPTH>;
+
 // Function definitions
 std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 	auto cache_line_count = write_input<InputPipe>(q, input);
-	compute_bitmaps<InputPipe, BitmapsToStringFilterPipe>(q, cache_line_count);
-	q.single_task([=]() {
-		for (auto count = 0ull; count < cache_line_count; ++count) {
-			BitmapsToStringFilterPipe::read();
+	compute_bitmaps<InputPipe, DebugBitmapsPipe>(q, cache_line_count);
+	for (auto i = 0ull; i < cache_line_count; ++i) {
+		auto bitmaps = DebugBitmapsPipe::read(q);
+		auto actual_state = OverflowState::None;
+
+		std::cout << "Input: ";
+		for (auto c : bitmaps.input) {
+			std::cout << c;
 		}
-	});
+		std::cout << "\n";
+
+		auto string_bits = bitmaps.is_string.to_string();
+		std::reverse(string_bits.begin(), string_bits.end());
+		auto escaped_bits = bitmaps.is_escaped.to_string();
+		std::reverse(escaped_bits.begin(), escaped_bits.end());
+
+		std::cout << "string:" << string_bits << "\n"
+				  << "escapd:" << escaped_bits << "\n"
+				  << "state: ";
+		print(std::cout, bitmaps.overflow_state);
+		std::cout << "\n";
+	}
+
 	q.wait();
 
 	return std::vector<std::string_view>();
@@ -113,23 +132,23 @@ template <class WritePipe> size_t write_input(sycl::queue &q, const std::string 
 	return line_count;
 }
 
-void start_string_filter(sycl::queue &q, const size_t count) {
-	std::vector<char> output;
-	q.submit([&](auto &h) {
-		h.template single_task<class StringFilterKernel>([=]() {
-			for (auto index = size_t{0}; index < count; ++index) {
-				auto bitmaps = BitmapsToStringFilterPipe::read();
-				auto input = CachelineToStringFilterPipe::read();
-
-				for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
-					const auto c = input[byte_index];
-					if (bitmaps.is_string[byte_index]) {
-						if ((c != '\"' && c != '\\') || bitmaps.is_escaped[byte_index]) {
-							CharOutputPipe::write(c);
-						}
-					}
-				}
-			}
-		});
-	});
-}
+// void start_string_filter(sycl::queue &q, const size_t count) {
+//	std::vector<char> output;
+//	q.submit([&](auto &h) {
+//		h.template single_task<class StringFilterKernel>([=]() {
+//			for (auto index = size_t{0}; index < count; ++index) {
+//				auto bitmaps = BitmapsToStringFilterPipe::read();
+//				auto input = CachelineToStringFilterPipe::read();
+//
+//				for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
+//					const auto c = input[byte_index];
+//					if (bitmaps.is_string[byte_index]) {
+//						if ((c != '\"' && c != '\\') || bitmaps.is_escaped[byte_index]) {
+//							CharOutputPipe::write(c);
+//						}
+//					}
+//				}
+//			}
+//		});
+//	});
+// }

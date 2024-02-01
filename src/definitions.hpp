@@ -14,7 +14,7 @@ struct Bitmaps;
 using Bitmap = std::bitset<CACHE_LINE_SIZE>;
 
 /// Possible overflow types.
-enum OverflowState : uint8_t {
+enum OverflowState {
 	/// No overflow.
 	None = 0,
 	/// An unfinished string at the end of this line.
@@ -25,11 +25,23 @@ enum OverflowState : uint8_t {
 	COUNT,
 };
 
-constexpr auto OverflowStateStrings = std::array{
-	"None",
-	"String",
-	"StringWithBackslash",
-};
+template <typename OS> constexpr OS &print(OS &os, OverflowState state) {
+	switch (state) {
+	case OverflowState::None:
+		os << "None";
+		break;
+	case OverflowState::String:
+		os << "String";
+		break;
+	case OverflowState::StringWithBackslash:
+		os << "StringWithBackslash";
+		break;
+	default:
+		os << "unknown";
+		break;
+	}
+	return os;
+}
 
 struct Overflows {
 	bool string_overflow = false;
@@ -38,6 +50,7 @@ struct Overflows {
 };
 
 struct Bitmaps {
+	CacheLine input;
 	Bitmap is_string;
 	Bitmap is_escaped;
 	OverflowState overflow_state;
