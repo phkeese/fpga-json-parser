@@ -25,6 +25,12 @@ enum OverflowState : uint8_t {
 	COUNT,
 };
 
+constexpr auto OverflowStateStrings = std::array{
+	"None",
+	"String",
+	"StringWithBackslash",
+};
+
 struct Overflows {
 	bool string_overflow = false;
 	bool backslash_overflow = false;

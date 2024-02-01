@@ -16,7 +16,14 @@
  */
 Bitmaps compute_bitmaps(OverflowState state, const CacheLine &input);
 
-template <OverflowState> class ComputeBitmapsKernel;
+class ComputeBitmapsKernel;
+
+const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
+	for (auto index = size_t{0}; index < CACHE_LINE_SIZE; ++index) {
+		stream << (map[index] ? '1' : '0');
+	}
+	return stream;
+}
 
 /**
  * Compute bitmaps by reading cache lines from input pipe and writing complete
@@ -28,25 +35,36 @@ template <OverflowState> class ComputeBitmapsKernel;
  */
 template <typename CacheLineInputPipe, typename BitmapsOutputPipe> void compute_bitmaps(sycl::queue &q, size_t expect) {
 	using StatePipe = sycl::ext::intel::pipe<class StatePipeId, OverflowState, PIPELINE_DEPTH>;
-	q.single_task([=]() {
-		for (auto line_index = size_t{0}; line_index < expect; ++line_index) {
-			const auto input = CacheLineInputPipe::read();
-			auto possible_bitmaps = std::array<Bitmaps, OverflowState::COUNT>{};
-			for (auto state = size_t{0}; state < OverflowState::COUNT; ++state) {
-				possible_bitmaps[state] = compute_bitmaps(static_cast<OverflowState>(state), input);
-			}
+	q.submit([&](auto &h) {
+		auto out = sycl::stream(4096, 1024, h);
 
-			if (line_index == 0) {
-				auto actual_bitmaps = possible_bitmaps[OverflowState::None];
-				StatePipe::write(actual_bitmaps.overflow_state);
-				BitmapsOutputPipe::write(actual_bitmaps);
-			} else {
-				auto actual_state = StatePipe::read();
+		h.template single_task<class ComputeBitmapsKernel>([=]() {
+			for (auto line_index = size_t{0}; line_index < expect; ++line_index) {
+				const auto input = CacheLineInputPipe::read();
+				auto possible_bitmaps = std::array<Bitmaps, OverflowState::COUNT>{};
+				for (auto state = size_t{0}; state < OverflowState::COUNT; ++state) {
+					possible_bitmaps[state] = compute_bitmaps(static_cast<OverflowState>(state), input);
+				}
+
+				auto actual_state = OverflowState::None;
+				if (line_index != 0) {
+					actual_state = StatePipe::read();
+				}
 				auto actual_bitmaps = possible_bitmaps[actual_state];
 				StatePipe::write(actual_bitmaps.overflow_state);
 				BitmapsOutputPipe::write(actual_bitmaps);
+
+				out << "Input: ";
+				for (auto c : input) {
+					out << c;
+				}
+				out << "\n";
+
+				out << "string:" << actual_bitmaps.is_string << "\n"
+					<< "escapd:" << actual_bitmaps.is_escaped << "\n"
+					<< "state: " << OverflowStateStrings[actual_bitmaps.overflow_state] << "\n";
 			}
-		}
+		});
 	});
 }
 

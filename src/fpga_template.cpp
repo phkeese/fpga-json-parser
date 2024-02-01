@@ -15,9 +15,13 @@
 // Functions
 std::vector<std::string_view> find_strings(sycl::queue &q, std::string input);
 
-void start_kernels(sycl::queue &q, const size_t count);
-
-Bitmaps build_bitmaps(const CacheLine &cache_line, const Overflows last_overflow);
+/**
+ * Write cache lines of data to a pipe.
+ * @tparam WritePipe Pipe to write cache lines to.
+ * @param input Data to write.
+ * @return Number of cache lines to expect.
+ */
+template <class WritePipe> size_t write_input(sycl::queue &q, const std::string &input);
 
 // Pipes
 
@@ -54,7 +58,7 @@ int main(int argc, char **argv) {
 
 		std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
 
-		constexpr auto input = R"("k":"value", "k\"y": "\"", "key": "unescaped\"")";
+		constexpr auto input = R"("k":"value", "k\"y": "\"", "key": "unescaped\"" )";
 
 		auto strings = find_strings(q, input);
 
@@ -78,36 +82,35 @@ int main(int argc, char **argv) {
 
 // Function definitions
 std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
-	// Append whitespaces to input to make it a multiple of CACHE_LINE_SIZE.
-	auto whitespaces_to_append = CACHE_LINE_SIZE - (input.size() % CACHE_LINE_SIZE);
-	input.append(whitespaces_to_append, ' ');
-
-	auto cache_line_count = input.size() / CACHE_LINE_SIZE;
-	start_kernels(q, cache_line_count);
-
-	// Send data to device.
-	auto index = size_t{0};
-	for (; index < cache_line_count; ++index) {
-		auto begin = input.begin() + index * CACHE_LINE_SIZE;
-		auto end = input.begin() + (index + 1) * CACHE_LINE_SIZE;
-		auto line = CacheLine{};
-		std::copy(begin, end, line.begin());
-		InputPipe::write(q, line);
-		CachelineToStringFilterPipe::write(q, line);
-	}
+	auto cache_line_count = write_input<InputPipe>(q, input);
+	compute_bitmaps<InputPipe, BitmapsToStringFilterPipe>(q, cache_line_count);
+	q.single_task([=]() {
+		for (auto count = 0ull; count < cache_line_count; ++count) {
+			BitmapsToStringFilterPipe::read();
+		}
+	});
+	q.wait();
 
 	return std::vector<std::string_view>();
 }
 
-const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
-	for (auto index = size_t{0}; index < CACHE_LINE_SIZE; ++index) {
-		stream << (map[index] ? '1' : '0');
-	}
-	return stream;
-}
-
-void start_kernels(sycl::queue &q, const size_t count) {
-	compute_bitmaps<InputPipe, BitmapsToStringFilterPipe>(q, count);
+template <class WritePipe> size_t write_input(sycl::queue &q, const std::string &input) {
+	assert(input.size() % CACHE_LINE_SIZE == 0);
+	const auto line_count = input.size() / CACHE_LINE_SIZE;
+	auto input_buffer = sycl::buffer{input};
+	q.submit([&](auto &h) {
+		auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
+		h.template single_task([=]() {
+			for (auto line_index = size_t{0}; line_index < line_count; ++line_index) {
+				auto begin = input_accessor.begin() + line_index * CACHE_LINE_SIZE;
+				auto end = input_accessor.begin() + (line_index + 1) * CACHE_LINE_SIZE;
+				auto line = CacheLine{};
+				std::copy(begin, end, line.begin());
+				WritePipe::write(line);
+			}
+		});
+	});
+	return line_count;
 }
 
 void start_string_filter(sycl::queue &q, const size_t count) {
