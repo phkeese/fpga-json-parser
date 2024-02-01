@@ -80,16 +80,25 @@ int main(int argc, char **argv) {
 	return EXIT_SUCCESS;
 }
 
-using DebugBitmapsPipe = sycl::ext::intel::experimental::pipe<class DebugBitmapsPipeId, Bitmaps, PIPELINE_DEPTH>;
+using DebugBitmapsPipe = sycl::ext::intel::pipe<class DebugBitmapsPipeId, Bitmaps, PIPELINE_DEPTH>;
 
 // Function definitions
 std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 	auto cache_line_count = write_input<InputPipe>(q, input);
 	compute_bitmaps<InputPipe, DebugBitmapsPipe>(q, cache_line_count);
-	for (auto i = 0ull; i < cache_line_count; ++i) {
-		auto bitmaps = DebugBitmapsPipe::read(q);
-		auto actual_state = OverflowState::None;
+	auto output_bitmaps = std::vector<Bitmaps>(cache_line_count);
+	auto output_buffer = sycl::buffer{output_bitmaps};
+	q.submit([&](auto &h) {
+		auto output_accessor = sycl::accessor{output_buffer, h, sycl::write_only};
+		h.template single_task<class ReadKernel>([=]() {
+			for (auto index = size_t{0}; index < cache_line_count; ++index) {
+				output_accessor[index] = DebugBitmapsPipe::read();
+			}
+		});
+	});
+	q.wait();
 
+	for (auto &bitmaps : output_bitmaps) {
 		std::cout << "Input: ";
 		for (auto c : bitmaps.input) {
 			std::cout << c;
@@ -107,8 +116,6 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		print(std::cout, bitmaps.overflow_state);
 		std::cout << "\n";
 	}
-
-	q.wait();
 
 	return std::vector<std::string_view>();
 }
