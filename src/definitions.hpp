@@ -56,3 +56,41 @@ struct Bitmaps {
 	OverflowState overflow_state;
 	Overflows overflows;
 };
+
+struct TokenizedCacheline {
+	CacheLine line;
+	Bitmaps bitmaps;
+};
+
+struct OutputCacheLine {
+	CacheLine line;
+	uint16_t character_count;
+};
+
+// //
+// // Extend a type 'T' with a boolean flag
+// //
+// template <typename T>
+// struct FlagBundle {
+//   using value_type = T;
+
+//   // ensure the type carried in this class has a subscript operator and that
+//   // it has a static integer member named 'size'
+//   static_assert(fpga_tools::has_subscript_v<T>);
+
+//   // this is used by the functions in memory_utils.hpp to ensure the size of
+//   // the type in the SYCL pipe matches the memory width
+//   static constexpr size_t size = T::size;
+
+//   FlagBundle() : data(T()), flag(false) {}
+//   FlagBundle(T d_in) : data(d_in), flag(false) {}
+//   FlagBundle(T d_in, bool f_in) : data(d_in), flag(f_in) {}
+//   FlagBundle(bool f_in) : data(T()), flag(f_in) {}
+
+//   unsigned char& operator[](int i) { return data[i]; }
+//   const unsigned char& operator[](int i) const { return data[i]; }
+
+//   T data;
+//   bool flag;
+// };
+

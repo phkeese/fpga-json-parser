@@ -33,7 +33,7 @@ const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
  * @param q Queue to use.
  * @param expect Number of cache lines to expect.
  */
-template <typename CacheLineInputPipe, typename BitmapsOutputPipe> void compute_bitmaps(sycl::queue &q, size_t expect) {
+template <typename CacheLineInputPipe, typename BitmapsOutputPipe, typename TokenizedBitmapsToStringFilterPipe> void compute_bitmaps(sycl::queue &q, size_t expect) {
 	using StatePipe = sycl::ext::intel::pipe<class StatePipeId, OverflowState, PIPELINE_DEPTH>;
 
 	q.template single_task<class ComputeBitmapsKernel>([=]() {
@@ -51,7 +51,10 @@ template <typename CacheLineInputPipe, typename BitmapsOutputPipe> void compute_
 			auto actual_bitmaps = possible_bitmaps[actual_state];
 			StatePipe::write(actual_bitmaps.overflow_state);
 			BitmapsOutputPipe::write(actual_bitmaps);
+			TokenizedBitmapsToStringFilterPipe::write({input, actual_bitmaps});
 		}
+
+		assert(StatePipe::read() == OverflowState::None);
 	});
 }
 

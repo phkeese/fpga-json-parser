@@ -14,7 +14,7 @@
 
 // Functions
 std::vector<std::string_view> find_strings(sycl::queue &q, std::string input);
-
+template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queue &q, const size_t count);
 /**
  * Write cache lines of data to a pipe.
  * @tparam WritePipe Pipe to write cache lines to.
@@ -32,10 +32,10 @@ using InputPipe = sycl::ext::intel::experimental::pipe<class InputPipeID, CacheL
 using CachelineToStringFilterPipe =
 	sycl::ext::intel::experimental::pipe<class CachelineToStringFilterPipeID, CacheLine, PIPELINE_DEPTH>;
 
-// Bitmap computation -> String filter (device).
-using BitmapsToStringFilterPipe = sycl::ext::intel::pipe<class BitmapsToStringFilterPipeID, Bitmaps, PIPELINE_DEPTH>;
+// Bitmap computation -> String filter (both device).
+using TokenizedCachelinesToStringFilterPipe = sycl::ext::intel::pipe<class TokenizedCachelinesToStringFilterPipeID, TokenizedCacheline, PIPELINE_DEPTH>;
 
-using CharOutputPipe = sycl::ext::intel::experimental::pipe<class CharOutputPipeID, char, PIPELINE_DEPTH>;
+using OutputCacheLinePipe = sycl::ext::intel::experimental::pipe<class OutputCacheLinePipeID, OutputCacheLine, PIPELINE_DEPTH>;
 
 // Main function
 int main(int argc, char **argv) {
@@ -85,7 +85,8 @@ using DebugBitmapsPipe = sycl::ext::intel::pipe<class DebugBitmapsPipeId, Bitmap
 // Function definitions
 std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 	auto cache_line_count = write_input<InputPipe>(q, input);
-	compute_bitmaps<InputPipe, DebugBitmapsPipe>(q, cache_line_count);
+	compute_bitmaps<InputPipe, DebugBitmapsPipe, TokenizedCachelinesToStringFilterPipe>(q, cache_line_count);
+	start_string_filter<TokenizedCachelinesToStringFilterPipe, OutputCacheLinePipe>(q, cache_line_count);
 	auto output_bitmaps = std::vector<Bitmaps>(cache_line_count);
 	auto output_buffer = sycl::buffer{output_bitmaps};
 	q.submit([&](auto &h) {
@@ -117,6 +118,17 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		std::cout << "\n";
 	}
 
+	std::vector<char> char_vec;
+	for (auto index = size_t{0}; index < cache_line_count; ++index) {
+		const auto output = OutputCacheLinePipe::read(q);
+		char_vec.insert(char_vec.end(), output.line.begin(), output.line.begin() + output.character_count);
+	}
+
+	for (const auto& c : char_vec) {
+		std::cout << c;
+	}
+	std::cout << std::endl;
+
 	return std::vector<std::string_view>();
 }
 
@@ -139,23 +151,41 @@ template <class WritePipe> size_t write_input(sycl::queue &q, const std::string 
 	return line_count;
 }
 
-// void start_string_filter(sycl::queue &q, const size_t count) {
-//	std::vector<char> output;
-//	q.submit([&](auto &h) {
-//		h.template single_task<class StringFilterKernel>([=]() {
-//			for (auto index = size_t{0}; index < count; ++index) {
-//				auto bitmaps = BitmapsToStringFilterPipe::read();
-//				auto input = CachelineToStringFilterPipe::read();
-//
-//				for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
-//					const auto c = input[byte_index];
-//					if (bitmaps.is_string[byte_index]) {
-//						if ((c != '\"' && c != '\\') || bitmaps.is_escaped[byte_index]) {
-//							CharOutputPipe::write(c);
-//						}
-//					}
-//				}
-//			}
-//		});
-//	});
-// }
+template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queue &q, const size_t count) {
+	q.submit([&](auto &h) {
+		h.template single_task<class StringFilterKernel>([=]() {
+			for (auto index = size_t{0}; index < count; ++index) {
+				const auto tokenized_cacheline = InPipe::read();
+				const auto& line = tokenized_cacheline.line;
+				const auto& bitmaps = tokenized_cacheline.bitmaps;
+
+				auto current_cacheline = CacheLine{};
+				auto current_count = uint16_t{0};
+
+				for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
+					const auto c = line[byte_index];
+					if (bitmaps.is_string[byte_index]) {
+						if (bitmaps.is_escaped[byte_index]) {
+							if (c == '\"' || c == '\\') {
+								current_cacheline[current_count++] = c;
+							} else if (c == 'n') {
+								current_cacheline[current_count++] = '\n';
+							} else if (c == 't') {
+								current_cacheline[current_count++] = '\t';
+							} else {
+								// Error: invalid escape sequence.
+							}
+						}
+						if (c != '\"' && c != '\\') {
+							current_cacheline[current_count++] = c;
+						}
+					}
+				}
+
+				// Write the current cacheline to the output pipe.
+				OutPipe::write({current_cacheline, current_count});
+			}
+		});
+	});
+}
+
