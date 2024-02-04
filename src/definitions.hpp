@@ -64,7 +64,7 @@ struct TokenizedCacheline {
 
 struct OutputCacheLine {
 	CacheLine line;
-	uint16_t character_count;
+	CacheLine string_lengths;
 };
 
 // //

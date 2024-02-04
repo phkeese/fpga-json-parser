@@ -21,7 +21,7 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
  * @param input Data to write.
  * @return Number of cache lines to expect.
  */
-template <class WritePipe> size_t write_input(sycl::queue &q, const std::string &input);
+template <class WritePipe> size_t write_input(sycl::queue &q, std::string &input);
 
 // Pipes
 
@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
 
 		std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
 
-		constexpr auto input = R"("k":"value", "k\"y": "\"", "key": "unescaped\"" )";
+		constexpr auto input = R"("k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines")";
 
 		auto strings = find_strings(q, input);
 
@@ -118,23 +118,57 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		std::cout << "\n";
 	}
 
-	std::vector<char> char_vec;
+	std::vector<std::string> string_vec;
+	auto had_overflow = false;
 	for (auto index = size_t{0}; index < cache_line_count; ++index) {
 		const auto output = OutputCacheLinePipe::read(q);
-		char_vec.insert(char_vec.end(), output.line.begin(), output.line.begin() + output.character_count);
+
+		const auto& chars = output.line;
+		const auto& lengths = output.string_lengths;
+
+		const auto string_count = lengths[0];
+		auto char_index = size_t{0};
+
+		auto string_index = size_t{0};
+		if (had_overflow && lengths[CACHE_LINE_SIZE - 2] == 1) {
+			const auto string_length = lengths[++string_index];
+			string_vec.back().append(chars.begin(), chars.begin() + string_length);
+			char_index += string_length;
+		}
+
+		for (; string_index < string_count; ++string_index) {
+			const auto string_length = lengths[string_index + 1];
+			string_vec.emplace_back(std::string{chars.begin() + char_index, chars.begin() + char_index + string_length});
+			char_index += string_length;
+		}
+
+		if (lengths[CACHE_LINE_SIZE - 1] == 1) {
+			had_overflow = true;
+		} else {
+			had_overflow = false;
+		}
 	}
 
-	for (const auto& c : char_vec) {
-		std::cout << c;
+	std::cout << "strings:";
+	for (const auto& c : string_vec) {
+		std::cout << c <<  "+++";
 	}
 	std::cout << std::endl;
 
 	return std::vector<std::string_view>();
 }
 
-template <class WritePipe> size_t write_input(sycl::queue &q, const std::string &input) {
-	assert(input.size() % CACHE_LINE_SIZE == 0);
+template <class WritePipe> size_t write_input(sycl::queue &q, std::string &input) {
+	// Check if input size is divisible by CACHE_LINE_SIZE
+	if (input.size() % CACHE_LINE_SIZE != 0) {
+		// Calculate the number of whitespaces to add
+		const auto whitespace_count = CACHE_LINE_SIZE - (input.size() % CACHE_LINE_SIZE);
+		// Append whitespaces to the input
+		input.append(whitespace_count, ' ');
+	
+	}
 	const auto line_count = input.size() / CACHE_LINE_SIZE;
+	
 	auto input_buffer = sycl::buffer{input};
 	q.submit([&](auto &h) {
 		auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
@@ -162,28 +196,58 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 				auto current_cacheline = CacheLine{};
 				auto current_count = uint16_t{0};
 
+				auto string_lengths = CacheLine{};
+
+				// We use a cacheline to store the lengths of the strings in the input cacheline. The first element is
+				// the total number of strings, the last element indicates if there is a string overflow.
+				string_lengths[0] = 0;
+
 				for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
-					const auto c = line[byte_index];
-					if (bitmaps.is_string[byte_index]) {
+					auto current_string_length = uint16_t{0};
+
+					for (; byte_index < CACHE_LINE_SIZE && bitmaps.is_string[byte_index]; ++byte_index) {
+						const auto c = line[byte_index];
+
 						if (bitmaps.is_escaped[byte_index]) {
 							if (c == '\"' || c == '\\') {
 								current_cacheline[current_count++] = c;
+								++current_string_length;
 							} else if (c == 'n') {
 								current_cacheline[current_count++] = '\n';
+								++current_string_length;
 							} else if (c == 't') {
 								current_cacheline[current_count++] = '\t';
+								++current_string_length;
 							} else {
 								// Error: invalid escape sequence.
 							}
 						}
+
 						if (c != '\"' && c != '\\') {
 							current_cacheline[current_count++] = c;
+							++current_string_length;
 						}
+					}
+
+					if (current_string_length > 0) {
+						string_lengths[0] += 1;
+						string_lengths[string_lengths[0]] = current_string_length;
 					}
 				}
 
+				if (bitmaps.overflow_state == OverflowState::String) {
+					string_lengths[CACHE_LINE_SIZE - 1] = 1;
+				} else {
+					string_lengths[CACHE_LINE_SIZE - 1] = 0;
+				}
+				if (bitmaps.is_string[0]) {
+					string_lengths[CACHE_LINE_SIZE - 2] = 1;
+				} else {
+					string_lengths[CACHE_LINE_SIZE - 2] = 0;
+				}
+
 				// Write the current cacheline to the output pipe.
-				OutPipe::write({current_cacheline, current_count});
+				OutPipe::write({current_cacheline, string_lengths});
 			}
 		});
 	});
