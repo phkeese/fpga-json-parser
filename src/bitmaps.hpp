@@ -12,9 +12,9 @@
  * Compute the bitmaps for a single type of overflow on a single cache line.
  * @tparam InitialState Which overflow state to start with.
  * @param input Input to compute bitmaps for.
- * @return Bitmaps for concrete initial state and input.
+ * @return pair of Bitmaps for concrete initial state and input and the tokens inside a CacheLine
  */
-Bitmaps compute_bitmaps(OverflowState state, const CacheLine &input);
+std::pair<Bitmaps, CacheLine>  compute_bitmaps(OverflowState state, const CacheLine &input);
 
 class ComputeBitmapsKernel;
 
@@ -34,39 +34,58 @@ const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
  * @param expect Number of cache lines to expect.
  */
 template <typename CacheLineInputPipe, typename BitmapsOutputPipe, typename TokenizedBitmapsToStringFilterPipe> void compute_bitmaps(sycl::queue &q, size_t expect) {
-	using StatePipe = sycl::ext::intel::pipe<class StatePipeId, OverflowState, PIPELINE_DEPTH>;
-
 	q.template single_task<class ComputeBitmapsKernel>([=]() {
+		auto actual_state = OverflowState::None;
+
 		for (auto line_index = size_t{0}; line_index < expect; ++line_index) {
 			const auto input = CacheLineInputPipe::read();
-			auto possible_bitmaps = std::array<Bitmaps, OverflowState::COUNT>{};
-			for (auto state = size_t{0}; state < OverflowState::COUNT; ++state) {
-				possible_bitmaps[state] = compute_bitmaps(static_cast<OverflowState>(state), input);
-			}
 
-			auto actual_state = OverflowState::None;
-			if (line_index != 0) {
-				actual_state = StatePipe::read();
-			}
-			auto actual_bitmaps = possible_bitmaps[actual_state];
-			StatePipe::write(actual_bitmaps.overflow_state);
-			BitmapsOutputPipe::write(actual_bitmaps);
-			TokenizedBitmapsToStringFilterPipe::write({input, actual_bitmaps});
+			const auto [bitmaps, tokens] = compute_bitmaps(actual_state, input);
+			actual_state = bitmaps.overflow_state;
+
+			BitmapsOutputPipe::write(bitmaps);
+			TokenizedBitmapsToStringFilterPipe::write({input, bitmaps, tokens});
 		}
 
-		assert(StatePipe::read() == OverflowState::None);
+		assert(actual_state == OverflowState::None);
 	});
 }
 
-Bitmaps compute_bitmaps(OverflowState state, const CacheLine &input) {
+std::pair<Bitmaps, CacheLine> compute_bitmaps(OverflowState state, const CacheLine &input) {
 	auto bitmaps = Bitmaps{};
+
+	auto token_index = size_t{0};
+	auto tokens = CacheLine{};
+
+	auto emit_token = [&](Token token) {
+		tokens[token_index++] = token;
+	};
+
 	bitmaps.input = input;
 	for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
 		const auto here = input[byte_index];
 		switch (state) {
 		case OverflowState::None:
-			if (here == '\"') {
-				state = OverflowState::String;
+			switch (here) {
+				case '{':
+					emit_token(Token::ObjectBeginToken);
+					break;
+				case '}':
+					emit_token(Token::ObjectEndToken);
+					break;
+				case '[':
+					emit_token(Token::ArrayBeginToken);
+					break;
+				case ']':
+					emit_token(Token::ArrayEndToken);
+					break;
+				case '"':
+					emit_token(Token::StringToken);
+					state = OverflowState::String;
+					break;
+				default:
+					// not supposed to happen for now
+					break;
 			}
 			break;
 		case OverflowState::String:
@@ -86,6 +105,11 @@ Bitmaps compute_bitmaps(OverflowState state, const CacheLine &input) {
 		}
 		bitmaps.is_string[byte_index] = state == OverflowState::String || state == OverflowState::StringWithBackslash;
 	}
+
+	if (token_index != CACHE_LINE_SIZE) {
+		emit_token(Token::EndOfTokens);
+	}
+
 	bitmaps.overflow_state = state;
-	return bitmaps;
+	return {bitmaps, tokens};
 }

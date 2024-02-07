@@ -25,6 +25,17 @@ enum OverflowState {
 	COUNT,
 };
 
+enum Token : uint8_t {
+	EndOfTokens = 0,
+	ObjectBeginToken,
+	ObjectEndToken,
+	ArrayBeginToken,
+	ArrayEndToken,
+	StringToken,
+	FloatToken,
+	IntegerToken
+};
+
 template <typename OS> constexpr OS &print(OS &os, OverflowState state) {
 	switch (state) {
 	case OverflowState::None:
@@ -43,28 +54,23 @@ template <typename OS> constexpr OS &print(OS &os, OverflowState state) {
 	return os;
 }
 
-struct Overflows {
-	bool string_overflow = false;
-	bool backslash_overflow = false;
-	bool number_overflow = false;
-};
-
 struct Bitmaps {
 	CacheLine input;
 	Bitmap is_string;
 	Bitmap is_escaped;
 	OverflowState overflow_state;
-	Overflows overflows;
 };
 
-struct TokenizedCacheline {
+struct TokenizedCacheLine {
 	CacheLine line;
 	Bitmaps bitmaps;
+	CacheLine tokens;
 };
 
 struct OutputCacheLine {
 	CacheLine line;
 	CacheLine string_lengths;
+	CacheLine tokens;
 };
 
 // //

@@ -33,7 +33,7 @@ using CachelineToStringFilterPipe =
 	sycl::ext::intel::experimental::pipe<class CachelineToStringFilterPipeID, CacheLine, PIPELINE_DEPTH>;
 
 // Bitmap computation -> String filter (both device).
-using TokenizedCachelinesToStringFilterPipe = sycl::ext::intel::pipe<class TokenizedCachelinesToStringFilterPipeID, TokenizedCacheline, PIPELINE_DEPTH>;
+using TokenizedCachelinesToStringFilterPipe = sycl::ext::intel::pipe<class TokenizedCachelinesToStringFilterPipeID, TokenizedCacheLine, PIPELINE_DEPTH>;
 
 using OutputCacheLinePipe = sycl::ext::intel::experimental::pipe<class OutputCacheLinePipeID, OutputCacheLine, PIPELINE_DEPTH>;
 
@@ -85,10 +85,13 @@ using DebugBitmapsPipe = sycl::ext::intel::pipe<class DebugBitmapsPipeId, Bitmap
 // Function definitions
 std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 	auto cache_line_count = write_input<InputPipe>(q, input);
+
 	compute_bitmaps<InputPipe, DebugBitmapsPipe, TokenizedCachelinesToStringFilterPipe>(q, cache_line_count);
 	start_string_filter<TokenizedCachelinesToStringFilterPipe, OutputCacheLinePipe>(q, cache_line_count);
+
 	auto output_bitmaps = std::vector<Bitmaps>(cache_line_count);
 	auto output_buffer = sycl::buffer{output_bitmaps};
+
 	q.submit([&](auto &h) {
 		auto output_accessor = sycl::accessor{output_buffer, h, sycl::write_only};
 		h.template single_task<class ReadKernel>([=]() {
@@ -121,6 +124,7 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 	std::vector<std::string> string_vec;
 	auto had_overflow = false;
 	for (auto index = size_t{0}; index < cache_line_count; ++index) {
+		// Get the output from the string filter.
 		const auto output = OutputCacheLinePipe::read(q);
 
 		const auto& chars = output.line;
@@ -146,6 +150,21 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 			had_overflow = true;
 		} else {
 			had_overflow = false;
+		}
+
+		// Get the output from the tokenizer.
+		auto tape = std::vector<Token>{};
+		for (auto index = size_t{0}; index < cache_line_count; ++index) {
+			const auto& tokens = output.tokens;
+
+			for (auto token_index = size_t{0}; token_index < CACHE_LINE_SIZE; ++token_index) {
+				const auto token = static_cast<Token>(tokens[token_index]);
+
+				if (token == Token::EndOfTokens) {
+					break;
+				}
+				tape.push_back(token);
+			}
 		}
 	}
 
@@ -247,7 +266,7 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 				}
 
 				// Write the current cacheline to the output pipe.
-				OutPipe::write({current_cacheline, string_lengths});
+				OutPipe::write({current_cacheline, string_lengths, tokenized_cacheline.tokens});
 			}
 		});
 	});
