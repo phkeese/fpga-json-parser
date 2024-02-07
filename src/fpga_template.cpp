@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
 
 		std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
 
-		constexpr auto input = R"("k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines")";
+		constexpr auto input = R"({"k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub"})";
 
 		auto strings = find_strings(q, input);
 
@@ -154,29 +154,27 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 			had_overflow = false;
 		}
 
+
 		// Get the output from the tokenizer.
-		for (auto index = size_t{0}; index < cache_line_count; ++index) {
-			const auto& tokens = output.tokens;
+		const auto& tokens = output.tokens;
+		for (auto token_index = size_t{0}; token_index < CACHE_LINE_SIZE; ++token_index) {
+			const auto token = static_cast<Token>(tokens[token_index]);
 
-			for (auto token_index = size_t{0}; token_index < CACHE_LINE_SIZE; ++token_index) {
-				const auto token = static_cast<Token>(tokens[token_index]);
-
-				if (token == Token::EndOfTokens) {
-					break;
-				}
-				tape.push_back(token);
+			if (token == Token::EndOfTokens) {
+				break;
 			}
+
+			tape.push_back(token);
 		}
 	}
 
 	const auto taped_json = TapedJson{std::move(tape), std::move(strings)};
+	// std::cout << "taped_json.print_tokes():" << std::endl;
+	// taped_json.print_tokes();
+	std::cout << "\n taped_json.print_strings():" << std::endl;
+	taped_json.print_strings();
+	std::cout << "\n taped_json.print_json():" << std::endl;
 	taped_json.print_json();
-
-	std::cout << "strings:";
-	for (const auto& c : strings) {
-		std::cout << c <<  "+++";
-	}
-	std::cout << std::endl;
 
 	return std::vector<std::string_view>();
 }
@@ -210,6 +208,7 @@ template <class WritePipe> size_t write_input(sycl::queue &q, std::string &input
 
 template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queue &q, const size_t count) {
 	q.submit([&](auto &h) {
+		auto out = sycl::stream(4096, 1024, h);
 		h.template single_task<class StringFilterKernel>([=]() {
 			for (auto index = size_t{0}; index < count; ++index) {
 				const auto tokenized_cacheline = InPipe::read();
@@ -268,6 +267,42 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 				} else {
 					string_lengths[CACHE_LINE_SIZE - 2] = 0;
 				}
+/*
+				for (auto token : tokenized_cacheline.tokens) {
+					switch (token) {
+            	case Token::ObjectBeginToken:
+            	    out << "ObjectBeginToken";
+            	    break;
+            	case Token::ObjectEndToken:
+            	    out << "ObjectEndToken";
+            	    break;
+            	case Token::ArrayBeginToken:
+            	    out << "ArrayBeginToken";
+            	    break;
+            	case Token::ArrayEndToken:
+            	    out << "ArrayEndToken";
+            	    break;
+            	case Token::StringToken:
+            	    out << "StringToken";
+            	    break;
+            	case Token::FloatToken:
+            	    out << "FloatToken";
+            	    break;
+            	case Token::IntegerToken:
+            	    out << "IntegerToken";
+            	    break;
+				case Token::EndOfTokens:
+				    out << "EndOfTokens";
+				    break;
+				case Token::Testi:
+					out << "Testi";
+					break;
+            	default:
+            	    out << "unknown";
+            	    break;
+            	}
+				}
+				out << "\n";*/
 
 				// Write the current cacheline to the output pipe.
 				OutPipe::write({current_cacheline, string_lengths, tokenized_cacheline.tokens});
