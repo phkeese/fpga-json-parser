@@ -8,6 +8,7 @@
 #include "bitmaps.hpp"
 #include "definitions.hpp"
 #include "exception_handler.hpp"
+#include "taped_json.hpp"
 #include <sycl/ext/intel/experimental/pipes.hpp>
 #include <sycl/ext/intel/fpga_extensions.hpp>
 #include <sycl/sycl.hpp>
@@ -121,7 +122,8 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		std::cout << "\n";
 	}
 
-	std::vector<std::string> string_vec;
+	std::vector<std::string> strings;
+	auto tape = std::vector<Token>{};
 	auto had_overflow = false;
 	for (auto index = size_t{0}; index < cache_line_count; ++index) {
 		// Get the output from the string filter.
@@ -136,13 +138,13 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		auto string_index = size_t{0};
 		if (had_overflow && lengths[CACHE_LINE_SIZE - 2] == 1) {
 			const auto string_length = lengths[++string_index];
-			string_vec.back().append(chars.begin(), chars.begin() + string_length);
+			strings.back().append(chars.begin(), chars.begin() + string_length);
 			char_index += string_length;
 		}
 
 		for (; string_index < string_count; ++string_index) {
 			const auto string_length = lengths[string_index + 1];
-			string_vec.emplace_back(std::string{chars.begin() + char_index, chars.begin() + char_index + string_length});
+			strings.emplace_back(std::string{chars.begin() + char_index, chars.begin() + char_index + string_length});
 			char_index += string_length;
 		}
 
@@ -153,7 +155,6 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		}
 
 		// Get the output from the tokenizer.
-		auto tape = std::vector<Token>{};
 		for (auto index = size_t{0}; index < cache_line_count; ++index) {
 			const auto& tokens = output.tokens;
 
@@ -168,8 +169,11 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		}
 	}
 
+	const auto taped_json = TapedJson{std::move(tape), std::move(strings)};
+	taped_json.print_json();
+
 	std::cout << "strings:";
-	for (const auto& c : string_vec) {
+	for (const auto& c : strings) {
 		std::cout << c <<  "+++";
 	}
 	std::cout << std::endl;
