@@ -34,9 +34,11 @@ using CachelineToStringFilterPipe =
 	sycl::ext::intel::experimental::pipe<class CachelineToStringFilterPipeID, CacheLine, PIPELINE_DEPTH>;
 
 // Bitmap computation -> String filter (both device).
-using TokenizedCachelinesToStringFilterPipe = sycl::ext::intel::pipe<class TokenizedCachelinesToStringFilterPipeID, TokenizedCacheLine, PIPELINE_DEPTH>;
+using TokenizedCachelinesToStringFilterPipe =
+	sycl::ext::intel::pipe<class TokenizedCachelinesToStringFilterPipeID, TokenizedCacheLine, PIPELINE_DEPTH>;
 
-using OutputCacheLinePipe = sycl::ext::intel::experimental::pipe<class OutputCacheLinePipeID, OutputCacheLine, PIPELINE_DEPTH>;
+using OutputCacheLinePipe =
+	sycl::ext::intel::experimental::pipe<class OutputCacheLinePipeID, OutputCacheLine, PIPELINE_DEPTH>;
 
 // Main function
 int main(int argc, char **argv) {
@@ -59,7 +61,8 @@ int main(int argc, char **argv) {
 
 		std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
 
-		constexpr auto input = R"({"k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub"})";
+		constexpr auto input =
+			R"({"k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub"})";
 
 		auto strings = find_strings(q, input);
 
@@ -129,8 +132,8 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		// Get the output from the string filter.
 		const auto output = OutputCacheLinePipe::read(q);
 
-		const auto& chars = output.line;
-		const auto& lengths = output.string_lengths;
+		const auto &chars = output.line;
+		const auto &lengths = output.string_lengths;
 
 		const auto string_count = lengths[0];
 		auto char_index = size_t{0};
@@ -154,9 +157,8 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 			had_overflow = false;
 		}
 
-
 		// Get the output from the tokenizer.
-		const auto& tokens = output.tokens;
+		const auto &tokens = output.tokens;
 		for (auto token_index = size_t{0}; token_index < CACHE_LINE_SIZE; ++token_index) {
 			const auto token = static_cast<Token>(tokens[token_index]);
 
@@ -173,8 +175,8 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 	// taped_json.print_tokes();
 	std::cout << "\n taped_json.print_strings():" << std::endl;
 	taped_json.print_strings();
-	std::cout << "\n taped_json.print_json():" << std::endl;
-	taped_json.print_json();
+	std::cout << "\n taped_json.print_tape():" << std::endl;
+	taped_json.print_tape();
 
 	return std::vector<std::string_view>();
 }
@@ -186,10 +188,9 @@ template <class WritePipe> size_t write_input(sycl::queue &q, std::string &input
 		const auto whitespace_count = CACHE_LINE_SIZE - (input.size() % CACHE_LINE_SIZE);
 		// Append whitespaces to the input
 		input.append(whitespace_count, ' ');
-	
 	}
 	const auto line_count = input.size() / CACHE_LINE_SIZE;
-	
+
 	auto input_buffer = sycl::buffer{input};
 	q.submit([&](auto &h) {
 		auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
@@ -212,8 +213,8 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 		h.template single_task<class StringFilterKernel>([=]() {
 			for (auto index = size_t{0}; index < count; ++index) {
 				const auto tokenized_cacheline = InPipe::read();
-				const auto& line = tokenized_cacheline.line;
-				const auto& bitmaps = tokenized_cacheline.bitmaps;
+				const auto &line = tokenized_cacheline.line;
+				const auto &bitmaps = tokenized_cacheline.bitmaps;
 
 				auto current_cacheline = CacheLine{};
 				auto current_count = uint16_t{0};
@@ -267,42 +268,42 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 				} else {
 					string_lengths[CACHE_LINE_SIZE - 2] = 0;
 				}
-/*
-				for (auto token : tokenized_cacheline.tokens) {
-					switch (token) {
-            	case Token::ObjectBeginToken:
-            	    out << "ObjectBeginToken";
-            	    break;
-            	case Token::ObjectEndToken:
-            	    out << "ObjectEndToken";
-            	    break;
-            	case Token::ArrayBeginToken:
-            	    out << "ArrayBeginToken";
-            	    break;
-            	case Token::ArrayEndToken:
-            	    out << "ArrayEndToken";
-            	    break;
-            	case Token::StringToken:
-            	    out << "StringToken";
-            	    break;
-            	case Token::FloatToken:
-            	    out << "FloatToken";
-            	    break;
-            	case Token::IntegerToken:
-            	    out << "IntegerToken";
-            	    break;
-				case Token::EndOfTokens:
-				    out << "EndOfTokens";
-				    break;
-				case Token::Testi:
-					out << "Testi";
-					break;
-            	default:
-            	    out << "unknown";
-            	    break;
-            	}
-				}
-				out << "\n";*/
+				/*
+								for (auto token : tokenized_cacheline.tokens) {
+									switch (token) {
+								case Token::ObjectBeginToken:
+									out << "ObjectBeginToken";
+									break;
+								case Token::ObjectEndToken:
+									out << "ObjectEndToken";
+									break;
+								case Token::ArrayBeginToken:
+									out << "ArrayBeginToken";
+									break;
+								case Token::ArrayEndToken:
+									out << "ArrayEndToken";
+									break;
+								case Token::StringToken:
+									out << "StringToken";
+									break;
+								case Token::FloatToken:
+									out << "FloatToken";
+									break;
+								case Token::IntegerToken:
+									out << "IntegerToken";
+									break;
+								case Token::EndOfTokens:
+									out << "EndOfTokens";
+									break;
+								case Token::Testi:
+									out << "Testi";
+									break;
+								default:
+									out << "unknown";
+									break;
+								}
+								}
+								out << "\n";*/
 
 				// Write the current cacheline to the output pipe.
 				OutPipe::write({current_cacheline, string_lengths, tokenized_cacheline.tokens});
@@ -310,4 +311,3 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 		});
 	});
 }
-
