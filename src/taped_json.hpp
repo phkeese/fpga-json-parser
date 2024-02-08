@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <regex>
 #include <stdexcept>
 #include <vector>
 
@@ -138,7 +139,7 @@ class TapedJson {
 			os << "]\t// pointing to previous tape location " << value.object_index << " (start of the scope)";
 			break;
 		case Token::StringToken:
-			os << "string \"" << _strings[value.string_index] << "\"";
+			os << "string \"" << std::regex_replace(_strings[value.string_index], std::regex("\n"), "\\n") << "\"";
 			break;
 		default:
 			break;
