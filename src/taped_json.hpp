@@ -125,7 +125,7 @@ class TapedJson {
 			break;
 		case Token::ObjectBeginToken:
 			os << "{\t// pointing to next tape location " << value.object_begin.end_index
-			   << " (first node after the scope), saturated count " << value.object_begin.saturation;
+			   << " (first node after the scope),  saturated count " << value.object_begin.saturation;
 			break;
 		case Token::ObjectEndToken:
 			os << "}\t// pointing to previous tape location " << value.object_index << " (start of the scope)";
@@ -133,14 +133,18 @@ class TapedJson {
 		case Token::ArrayBeginToken:
 			os << "[\t// pointing to next tape location " << value.object_begin.end_index
 			   << " (first node after the scope)"
-			   << ", saturated count " << value.object_begin.saturation;
+			   << ",  saturated count " << value.object_begin.saturation;
 			break;
 		case Token::ArrayEndToken:
 			os << "]\t// pointing to previous tape location " << value.object_index << " (start of the scope)";
 			break;
-		case Token::StringToken:
-			os << "string \"" << std::regex_replace(_strings[value.string_index], std::regex("\n"), "\\n") << "\"";
+		case Token::StringToken: {
+			auto out_string = std::regex_replace(_strings[value.string_index], std::regex(R"(\\)"), R"(\\)");
+			out_string = std::regex_replace(out_string, std::regex("\""), "\\\"");
+			out_string = std::regex_replace(out_string, std::regex("\n"), "\\n");
+			os << "string \"" << out_string << "\"";
 			break;
+		}
 		default:
 			break;
 		}
