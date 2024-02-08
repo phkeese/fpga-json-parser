@@ -73,6 +73,7 @@ class TapedJson {
 	// private:
 	void _construct_tape(std::vector<Token> &&tokens) {
 		_tape.reserve(tokens.size());
+		auto string_index = size_t{0};
 
 		auto object_stack = std::vector<size_t>{};
 		for (const auto token : tokens) {
@@ -102,7 +103,7 @@ class TapedJson {
 				break;
 			}
 			case Token::StringToken:
-				_tape.push_back({token, {.object_index = _strings.size()}});
+				_tape.push_back({token, {.string_index = string_index++}});
 				break;
 			case Token::FloatToken:
 				throw std::runtime_error("Floats are not supported");
