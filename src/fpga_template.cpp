@@ -9,6 +9,7 @@
 #include "definitions.hpp"
 #include "exception_handler.hpp"
 #include "taped_json.hpp"
+#include <fstream>
 #include <sycl/ext/intel/experimental/pipes.hpp>
 #include <sycl/ext/intel/fpga_extensions.hpp>
 #include <sycl/sycl.hpp>
@@ -61,8 +62,17 @@ int main(int argc, char **argv) {
 
 		std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
 
-		constexpr auto input =
-			R"({"k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub"})";
+		auto input = std::string{
+			R"({"k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub"})"};
+		if (argc > 1) {
+			const auto filename = argv[1];
+			std::ifstream file(filename);
+			if (!file.is_open()) {
+				std::cerr << "Could not open file: " << filename << std::endl;
+				return EXIT_FAILURE;
+			}
+			input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+		}
 
 		auto strings = find_strings(q, input);
 
