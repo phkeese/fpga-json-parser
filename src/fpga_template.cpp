@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
 		std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
 
 		auto input = std::string{
-			R"({"k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub\nmore"})"};
+			R"({"k":"value", "k\"y": "\"",   "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub\nmore"})"};
 		if (argc > 1) {
 			const auto filename = argv[1];
 			std::ifstream file(filename);
@@ -116,28 +116,28 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 	});
 	q.wait();
 
-	for (auto &bitmaps : output_bitmaps) {
-		std::cout << "Input: ";
-		for (auto c : bitmaps.input) {
-			if (std::isprint(c)) {
-				std::cout << c;
-			} else {
-				std::cout << ".";
-			}
-		}
-		std::cout << "\n";
+	// for (auto &bitmaps : output_bitmaps) {
+	// 	std::cout << "Input: ";
+	// 	for (auto c : bitmaps.input) {
+	// 		if (std::isprint(c)) {
+	// 			std::cout << c;
+	// 		} else {
+	// 			std::cout << ".";
+	// 		}
+	// 	}
+	// 	std::cout << "\n";
 
-		auto string_bits = bitmaps.is_string.to_string();
-		std::reverse(string_bits.begin(), string_bits.end());
-		auto escaped_bits = bitmaps.is_escaped.to_string();
-		std::reverse(escaped_bits.begin(), escaped_bits.end());
+	// 	auto string_bits = bitmaps.is_string.to_string();
+	// 	std::reverse(string_bits.begin(), string_bits.end());
+	// 	auto escaped_bits = bitmaps.is_escaped.to_string();
+	// 	std::reverse(escaped_bits.begin(), escaped_bits.end());
 
-		std::cout << "string:" << string_bits << "\n"
-				  << "escapd:" << escaped_bits << "\n"
-				  << "state: ";
-		print(std::cout, bitmaps.overflow_state);
-		std::cout << "\n";
-	}
+	// 	std::cout << "string:" << string_bits << "\n"
+	// 			  << "escapd:" << escaped_bits << "\n"
+	// 			  << "state: ";
+	// 	print(std::cout, bitmaps.overflow_state);
+	// 	std::cout << "\n";
+	// }
 
 	std::vector<std::string> strings;
 	auto tape = std::vector<Token>{};
@@ -155,7 +155,9 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		auto string_index = size_t{0};
 		if (had_overflow && lengths[CACHE_LINE_SIZE - 2] == 1) {
 			const auto string_length = lengths[++string_index];
+			// std::cout << "before: " << strings.back();
 			strings.back().append(chars.begin(), chars.begin() + string_length);
+			// std::cout << " after: " << strings.back() << std::endl;
 			char_index += string_length;
 		}
 
@@ -184,11 +186,16 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 		}
 	}
 
+	std::cout << "strings:" << std::endl;
+	for (const auto &string : strings) {
+		std::cout << string << std::endl;
+	}
+
 	const auto taped_json = TapedJson{std::move(tape), std::move(strings)};
 	// std::cout << "taped_json.print_tokes():" << std::endl;
 	// taped_json.print_tokes();
-	std::cout << "\n taped_json.print_strings():" << std::endl;
-	taped_json.print_strings();
+	// std::cout << "\n taped_json.print_strings():" << std::endl;
+	// taped_json.print_strings();
 	std::cout << "\n taped_json.print_tape():" << std::endl;
 	taped_json.print_tape();
 
@@ -272,7 +279,9 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 					}
 				}
 
-				if (bitmaps.overflow_state == OverflowState::String) {
+				if ((bitmaps.is_string[CACHE_LINE_SIZE - 2] && bitmaps.overflow_state == OverflowState::String) ||
+					(bitmaps.is_string[CACHE_LINE_SIZE - 3] && bitmaps.is_string[CACHE_LINE_SIZE - 2] &&
+					 bitmaps.overflow_state == OverflowState::StringWithBackslash)) {
 					string_lengths[CACHE_LINE_SIZE - 1] = 1;
 				} else {
 					string_lengths[CACHE_LINE_SIZE - 1] = 0;
@@ -282,42 +291,6 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 				} else {
 					string_lengths[CACHE_LINE_SIZE - 2] = 0;
 				}
-				/*
-								for (auto token : tokenized_cacheline.tokens) {
-									switch (token) {
-								case Token::ObjectBeginToken:
-									out << "ObjectBeginToken";
-									break;
-								case Token::ObjectEndToken:
-									out << "ObjectEndToken";
-									break;
-								case Token::ArrayBeginToken:
-									out << "ArrayBeginToken";
-									break;
-								case Token::ArrayEndToken:
-									out << "ArrayEndToken";
-									break;
-								case Token::StringToken:
-									out << "StringToken";
-									break;
-								case Token::FloatToken:
-									out << "FloatToken";
-									break;
-								case Token::IntegerToken:
-									out << "IntegerToken";
-									break;
-								case Token::EndOfTokens:
-									out << "EndOfTokens";
-									break;
-								case Token::Testi:
-									out << "Testi";
-									break;
-								default:
-									out << "unknown";
-									break;
-								}
-								}
-								out << "\n";*/
 
 				// Write the current cacheline to the output pipe.
 				OutPipe::write({current_cacheline, string_lengths, tokenized_cacheline.tokens});
