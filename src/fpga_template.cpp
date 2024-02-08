@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
 		std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
 
 		auto input = std::string{
-			R"({"k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub"})"};
+			R"({"k":"value", "k\"y": "\"", "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub\nmore"})"};
 		if (argc > 1) {
 			const auto filename = argv[1];
 			std::ifstream file(filename);
@@ -119,7 +119,11 @@ std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
 	for (auto &bitmaps : output_bitmaps) {
 		std::cout << "Input: ";
 		for (auto c : bitmaps.input) {
-			std::cout << c;
+			if (std::isprint(c)) {
+				std::cout << c;
+			} else {
+				std::cout << ".";
+			}
 		}
 		std::cout << "\n";
 
@@ -241,6 +245,7 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 					for (; byte_index < CACHE_LINE_SIZE && bitmaps.is_string[byte_index]; ++byte_index) {
 						const auto c = line[byte_index];
 
+						// If the current character is escaped, append the corresponding character to the output.
 						if (bitmaps.is_escaped[byte_index]) {
 							if (c == '\"' || c == '\\') {
 								current_cacheline[current_count++] = c;
@@ -254,9 +259,8 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 							} else {
 								// Error: invalid escape sequence.
 							}
-						}
-
-						if (c != '\"' && c != '\\') {
+						} else if (c != '\"' && c != '\\') {
+							// If the current character is not escaped, append it to the output.s
 							current_cacheline[current_count++] = c;
 							++current_string_length;
 						}

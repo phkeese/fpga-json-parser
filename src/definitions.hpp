@@ -27,6 +27,7 @@ enum OverflowState {
 
 enum Token : uint8_t {
 	EndOfTokens = 0,
+	StartOfTokens = 1,
 	ObjectBeginToken,
 	ObjectEndToken,
 	ArrayBeginToken,
