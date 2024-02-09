@@ -62,12 +62,14 @@ set(EMULATOR_TARGET fpga_emu)
 set(SIMULATOR_TARGET fpga_sim)
 set(REPORT_TARGET report)
 set(FPGA_TARGET fpga)
+set(BENCH_TARGET_EMU fpga_bench_emu)
 
 # Set the names of the generated files per makefile target
 set(EMULATOR_OUTPUT_NAME ${TARGET_NAME}.${EMULATOR_TARGET})
 set(SIMULATOR_OUTPUT_NAME ${TARGET_NAME}.${SIMULATOR_TARGET})
 set(REPORT_OUTPUT_NAME ${TARGET_NAME}.${REPORT_TARGET})
 set(FPGA_OUTPUT_NAME ${TARGET_NAME}.${FPGA_TARGET})
+set(BENCH_OUTPUT_NAME_EMU ${TARGET_NAME}.${BENCH_TARGET_EMU})
 
 message(STATUS "Additional USER_FPGA_FLAGS=${USER_FPGA_FLAGS}")
 message(STATUS "Additional USER_FLAGS=${USER_FLAGS}")
@@ -303,3 +305,38 @@ add_custom_target(displayFPGACompileCommands
         ${CMAKE_COMMAND} -E cmake_echo_color --cyan ""
         COMMENT "To compile manually:\n${COMPILE_COMMAND}\nTo link manually:\n${LINK_COMMAND}")
 add_dependencies(${FPGA_TARGET} displayFPGACompileCommands)
+
+include(FetchContent)
+
+# Externally provided libraries
+FetchContent_Declare(googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG v1.10.x)
+
+FetchContent_Declare(googlebenchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
+        GIT_TAG main) # need main for benchmark::benchmark
+
+FetchContent_MakeAvailable(
+        googletest
+        googlebenchmark)
+    
+    
+
+###############################################################################
+### Benchmarks
+###############################################################################
+set(BENCHMARK_SOURCE_FILES
+    src/benchmarks.cpp
+    ${SOURCE_FILES}
+    )
+list(REMOVE_ITEM BENCHMARK_SOURCE_FILES src/fpga_template.cpp)
+
+add_executable(${BENCH_TARGET_EMU} ${BENCHMARK_SOURCE_FILES})
+target_compile_options(${BENCH_TARGET_EMU} PRIVATE ${COMMON_COMPILE_FLAGS})
+target_compile_options(${BENCH_TARGET_EMU} PRIVATE ${EMULATOR_COMPILE_FLAGS})
+target_link_libraries(${BENCH_TARGET_EMU} ${COMMON_LINK_FLAGS})
+target_link_libraries(${BENCH_TARGET_EMU} ${EMULATOR_LINK_FLAGS})
+target_include_directories(${BENCH_TARGET_EMU} PRIVATE ${USER_INCLUDE_PATHS})
+target_link_libraries(${BENCH_TARGET_EMU} benchmark::benchmark)
+set_target_properties(${BENCH_TARGET_EMU} PROPERTIES OUTPUT_NAME ${BENCH_OUTPUT_NAME_EMU})
