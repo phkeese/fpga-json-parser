@@ -35,13 +35,11 @@ class TapedJson {
 	}
 
 	void print_tape() const {
-		std::cout << "<Begin Tape>" << std::endl;
 		for (size_t i = 0; i < _tape.size(); ++i) {
 			std::cout << i << " : ";
 			_print_token(std::cout, _tape[i]);
 			std::cout << std::endl;
 		}
-		std::cout << "<End Tape>" << std::endl;
 	}
 
 	// private:

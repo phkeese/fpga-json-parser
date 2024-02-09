@@ -3,9 +3,6 @@
 #include <array>
 #include <bitset>
 
-#include <sycl/ext/intel/experimental/pipes.hpp>
-#include <sycl/ext/intel/fpga_extensions.hpp>
-
 // Constants
 constexpr auto CACHE_LINE_SIZE = size_t{8};
 constexpr auto PIPELINE_DEPTH = size_t{1};
@@ -76,17 +73,3 @@ struct OutputCacheLine {
 	CacheLine string_lengths;
 	CacheLine tokens;
 };
-
-// Host -> Bitmap computation.
-using InputPipe = sycl::ext::intel::experimental::pipe<class InputPipeID, CacheLine, PIPELINE_DEPTH>;
-
-// Host -> String filter.
-using CachelineToStringFilterPipe =
-	sycl::ext::intel::experimental::pipe<class CachelineToStringFilterPipeID, CacheLine, PIPELINE_DEPTH>;
-
-// Bitmap computation -> String filter (both device).
-using TokenizedCachelinesToStringFilterPipe =
-	sycl::ext::intel::pipe<class TokenizedCachelinesToStringFilterPipeID, TokenizedCacheLine, PIPELINE_DEPTH>;
-
-using OutputCacheLinePipe =
-	sycl::ext::intel::experimental::pipe<class OutputCacheLinePipeID, OutputCacheLine, PIPELINE_DEPTH>;

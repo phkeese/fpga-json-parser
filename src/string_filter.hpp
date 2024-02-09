@@ -1,8 +1,9 @@
 #pragma once
 
-template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queue &q, const size_t count) {
-	q.submit([&](auto &h) {
-		h.template single_task<class StringFilterKernel>([=]() {
+template <typename Id, typename InPipe, typename OutPipe>
+sycl::event submit_string_filter(sycl::queue &q, const size_t count) {
+	const auto string_filter_event = q.submit([&](auto &h) {
+		h.template single_task<Id>([=]() {
 			for (auto index = size_t{0}; index < count; ++index) {
 				const auto tokenized_cacheline = InPipe::read();
 				const auto &line = tokenized_cacheline.line;
@@ -68,4 +69,6 @@ template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queu
 			}
 		});
 	});
+
+	return string_filter_event;
 }
