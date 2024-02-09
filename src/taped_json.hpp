@@ -92,9 +92,6 @@ class TapedJson {
 				break;
 			}
 			case Token::StringToken:
-				if (string_index >= _strings.size()) {
-					throw std::runtime_error("String index out of bounds");
-				}
 				_tape.push_back({token, {.string_index = string_index++}});
 				break;
 			case Token::FloatToken:
@@ -110,6 +107,11 @@ class TapedJson {
 			default:
 				break;
 			}
+		}
+
+		if (string_index != _strings.size()) {
+			throw std::runtime_error("String count missmatch: " + std::to_string(string_index) + " string tokens vs " +
+									 std::to_string(_strings.size()) + " strings.");
 		}
 	}
 
