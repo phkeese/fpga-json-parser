@@ -26,25 +26,33 @@ using OutPipe = sycl::ext::intel::experimental::pipe<OutPipeId, OutputCacheLine,
 // class DebugPipeId;
 // using DebugPipe = sycl::ext::intel::experimental::pipe<DebugPipeId, Bitmaps, PIPELINE_DEPTH>;
 
-template <typename Id, typename InPipe> sycl::event submit_producer(sycl::queue &q, std::string &input) {
-	// Check if input size is divisible by CACHE_LINE_SIZE
-	if (input.size() % CACHE_LINE_SIZE != 0) {
-		// Calculate the number of whitespaces to add
-		const auto whitespace_count = CACHE_LINE_SIZE - (input.size() % CACHE_LINE_SIZE);
-		// Append whitespaces to the input
-		input.append(whitespace_count, ' ');
-	}
-	const auto line_count = input.size() / CACHE_LINE_SIZE;
+template <typename Id, typename InPipe> sycl::event submit_producer(sycl::queue &q, const std::string &input) {
+	const auto input_size = input.size();
 
+	// Check if input size is divisible by CACHE_LINE_SIZE
+	const bool underfull_cache_line = input_size % CACHE_LINE_SIZE != 0;
+
+	const auto cache_line_count = input_size / CACHE_LINE_SIZE;
 	auto input_buffer = sycl::buffer{input};
+
 	const auto producer_event = q.submit([&](auto &h) {
-		auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
+		const auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
+
 		h.template single_task<Id>([=]() {
-			for (auto line_index = size_t{0}; line_index < line_count; ++line_index) {
-				auto begin = input_accessor.begin() + line_index * CACHE_LINE_SIZE;
-				auto end = input_accessor.begin() + (line_index + 1) * CACHE_LINE_SIZE;
+			for (auto index = size_t{0}; index < cache_line_count; ++index) {
+				const auto begin = input_accessor.begin() + index * CACHE_LINE_SIZE;
+				const auto end = input_accessor.begin() + (index + 1) * CACHE_LINE_SIZE;
 				auto line = CacheLine{};
 				std::copy(begin, end, line.begin());
+				InPipe::write(line);
+			}
+
+			if (underfull_cache_line) {
+				const auto begin = input_accessor.begin() + cache_line_count * CACHE_LINE_SIZE;
+				const auto end = input_accessor.begin() + input_size;
+				auto line = CacheLine{};
+				std::copy(begin, end, line.begin());
+				std::fill(line.begin() + (input_size % CACHE_LINE_SIZE), line.end(), ' ');
 				InPipe::write(line);
 			}
 		});
