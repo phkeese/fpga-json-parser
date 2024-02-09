@@ -23,7 +23,9 @@ set(SOURCE_FILES
     src/fpga_template.cpp
     src/bitmaps.hpp
     src/definitions.hpp
+    src/json_parser.hpp
     src/string_filter.hpp
+    src/tape_builder.hpp
     src/taped_json.hpp)
 set(TARGET_NAME fpga_template)
 
