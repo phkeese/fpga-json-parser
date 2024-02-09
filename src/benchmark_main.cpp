@@ -1,9 +1,11 @@
-#include "benchmark_common.h"
 #include <benchmark/benchmark.h>
 #include <dirent.h>
 #include <iostream>
 
-extern void register_fpga_benchmarks_for(const std::string &filename);
+constexpr auto JSON_PATH = "../data/processed";
+
+extern void register_fpga_benchmarks_for(const std::string &dirname, const std::string &filename);
+extern void register_simdjson_benchmarks_for(const std::string &dirname, const std::string &filename);
 
 std::vector<std::string> getAllFilenames(const std::string &folderPath) {
 	std::vector<std::string> filenames;
@@ -15,7 +17,7 @@ std::vector<std::string> getAllFilenames(const std::string &folderPath) {
 	if (dpdf != NULL) {
 		while ((epdf = readdir(dpdf))) {
 			if (epdf->d_name[0] != '.') {
-				filenames.push_back(folderPath + "/" + epdf->d_name);
+				filenames.emplace_back(epdf->d_name);
 			}
 		}
 	}
@@ -32,7 +34,8 @@ int main(int argc, char **argv) {
 	auto filenames = getAllFilenames(JSON_PATH);
 	for (const auto &filename : filenames) {
 		std::cout << "Registering benchmarks for " << filename << std::endl;
-		register_fpga_benchmarks_for(filename);
+		register_fpga_benchmarks_for(JSON_PATH, filename);
+		register_simdjson_benchmarks_for(JSON_PATH, filename);
 	}
 	::benchmark::Initialize(&argc, argv);
 	if (::benchmark::ReportUnrecognizedArguments(argc, argv))

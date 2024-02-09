@@ -55,9 +55,9 @@ static void COUNT_STRING_LENGTHS_FPGA(benchmark::State &state, const std::string
 	}
 }
 
-void register_fpga_benchmarks_for(const std::string &filename) {
+void register_fpga_benchmarks_for(const std::string &dirname, const std::string &filename) {
 	// Register the function as a benchmark
-	benchmark::RegisterBenchmark("MAX_DEPTH_FPGA_" + filename, MAX_DEPTH_FPGA, filename);
-	benchmark::RegisterBenchmark("ONLY_PARSE_FPGA_" + filename, ONLY_PARSE_FPGA, filename);
-	benchmark::RegisterBenchmark("COUNT_STRING_LENGTHS_FPGA_" + filename, COUNT_STRING_LENGTHS_FPGA, filename);
+	benchmark::RegisterBenchmark("fpga::max_depth::" + filename, MAX_DEPTH_FPGA, dirname + filename);
+	benchmark::RegisterBenchmark("fpga::parse::" + filename, ONLY_PARSE_FPGA, dirname + filename);
+	benchmark::RegisterBenchmark("fpga::string_lengths::" + filename, COUNT_STRING_LENGTHS_FPGA, dirname + filename);
 }

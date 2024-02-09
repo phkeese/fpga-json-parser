@@ -333,6 +333,7 @@ add_subdirectory(benchmark)
 set(BENCHMARK_SOURCE_FILES
     src/benchmark_main.cpp
     src/benchmark_ours.cpp
+    src/benchmark_simdjson.cpp
     ${SOURCE_FILES}
     )
 list(REMOVE_ITEM BENCHMARK_SOURCE_FILES src/main.cpp)
