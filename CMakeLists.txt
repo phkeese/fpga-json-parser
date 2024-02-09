@@ -331,7 +331,8 @@ add_subdirectory(benchmark)
 ### Benchmarks
 ###############################################################################
 set(BENCHMARK_SOURCE_FILES
-    src/benchmarks.cpp
+    src/benchmark_main.cpp
+    src/benchmark_ours.cpp
     ${SOURCE_FILES}
     )
 list(REMOVE_ITEM BENCHMARK_SOURCE_FILES src/main.cpp)
