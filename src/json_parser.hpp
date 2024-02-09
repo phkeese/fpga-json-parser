@@ -1,6 +1,8 @@
 #pragma once
 
 #include "definitions.hpp"
+#include "tape_builder.hpp"
+#include "taped_json.hpp"
 
 template <class WritePipe> size_t write_input(sycl::queue &q, std::string &input) {
 	// Check if input size is divisible by CACHE_LINE_SIZE
@@ -26,4 +28,11 @@ template <class WritePipe> size_t write_input(sycl::queue &q, std::string &input
 		});
 	});
 	return line_count;
+}
+
+TapedJson parse(sycl::queue &q, std::string &input) {
+	const auto cache_line_count = write_input<InputPipe>(q, input);
+	const auto taped_json = find_strings(q, cache_line_count);
+
+	return taped_json;
 }

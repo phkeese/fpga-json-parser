@@ -1,17 +1,21 @@
 #pragma once
 
 #include "definitions.hpp"
+#include "string_filter.hpp"
 #include "taped_json.hpp"
 
-using DebugBitmapsPipe = sycl::ext::intel::pipe<class DebugBitmapsPipeId, Bitmaps, PIPELINE_DEPTH>;
+// using DebugBitmapsPipe = sycl::ext::intel::pipe<class DebugBitmapsPipeId, Bitmaps, PIPELINE_DEPTH>;
 
-void find_strings(sycl::queue &q, std::string input) {
-	auto cache_line_count = write_input<InputPipe>(q, input);
-
-	compute_bitmaps<InputPipe, DebugBitmapsPipe, TokenizedCachelinesToStringFilterPipe>(q, cache_line_count);
+TapedJson find_strings(sycl::queue &q, const size_t cache_line_count) {
+	// compute_bitmaps<InputPipe, DebugBitmapsPipe, TokenizedCachelinesToStringFilterPipe>(q, cache_line_count);
+	compute_bitmaps<InputPipe, TokenizedCachelinesToStringFilterPipe>(q, cache_line_count);
 	start_string_filter<TokenizedCachelinesToStringFilterPipe, OutputCacheLinePipe>(q, cache_line_count);
 
-	auto output_bitmaps = std::vector<Bitmaps>(cache_line_count);
+	///////////////////////////////////////
+	// Comment in for debugging purposes //
+	///////////////////////////////////////
+
+	/*auto output_bitmaps = std::vector<Bitmaps>(cache_line_count);
 	auto output_buffer = sycl::buffer{output_bitmaps};
 
 	q.submit([&](auto &h) {
@@ -24,28 +28,28 @@ void find_strings(sycl::queue &q, std::string input) {
 	});
 	q.wait();
 
-	// for (auto &bitmaps : output_bitmaps) {
-	// 	std::cout << "Input: ";
-	// 	for (auto c : bitmaps.input) {
-	// 		if (std::isprint(c)) {
-	// 			std::cout << c;
-	// 		} else {
-	// 			std::cout << ".";
-	// 		}
-	// 	}
-	// 	std::cout << "\n";
+	for (auto &bitmaps : output_bitmaps) {
+		std::cout << "Input: ";
+		for (auto c : bitmaps.input) {
+			if (std::isprint(c)) {
+				std::cout << c;
+			} else {
+				std::cout << ".";
+			}
+		}
+		std::cout << "\n";
 
-	// 	auto string_bits = bitmaps.is_string.to_string();
-	// 	std::reverse(string_bits.begin(), string_bits.end());
-	// 	auto escaped_bits = bitmaps.is_escaped.to_string();
-	// 	std::reverse(escaped_bits.begin(), escaped_bits.end());
+		auto string_bits = bitmaps.is_string.to_string();
+		std::reverse(string_bits.begin(), string_bits.end());
+		auto escaped_bits = bitmaps.is_escaped.to_string();
+		std::reverse(escaped_bits.begin(), escaped_bits.end());
 
-	// 	std::cout << "string:" << string_bits << "\n"
-	// 			  << "escapd:" << escaped_bits << "\n"
-	// 			  << "state: ";
-	// 	print(std::cout, bitmaps.overflow_state);
-	// 	std::cout << "\n";
-	// }
+		std::cout << "string:" << string_bits << "\n"
+				  << "escapd:" << escaped_bits << "\n"
+				  << "state: ";
+		print(std::cout, bitmaps.overflow_state);
+		std::cout << "\n";
+	}*/
 
 	std::vector<std::string> strings;
 	auto tape = std::vector<Token>{};
@@ -95,10 +99,6 @@ void find_strings(sycl::queue &q, std::string input) {
 	}
 
 	const auto taped_json = TapedJson{std::move(tape), std::move(strings)};
-	// std::cout << "taped_json.print_tokes():" << std::endl;
-	// taped_json.print_tokes();
-	// std::cout << "\n taped_json.print_strings():" << std::endl;
-	// taped_json.print_strings();
-	std::cout << "\n taped_json.print_tape():" << std::endl;
-	taped_json.print_tape();
+
+	return taped_json;
 }

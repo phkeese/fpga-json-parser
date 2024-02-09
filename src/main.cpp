@@ -9,16 +9,10 @@
 #include "definitions.hpp"
 #include "exception_handler.hpp"
 #include "json_parser.hpp"
-#include "string_filter.hpp"
-#include "tape_builder.hpp"
 #include "taped_json.hpp"
 #include <fstream>
-#include <sycl/ext/intel/experimental/pipes.hpp>
 #include <sycl/ext/intel/fpga_extensions.hpp>
 #include <sycl/sycl.hpp>
-
-// Functions
-void find_strings(sycl::queue &q, std::string input);
 
 // Main function
 int main(int argc, char **argv) {
@@ -53,7 +47,8 @@ int main(int argc, char **argv) {
 			input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 		}
 
-		find_strings(q, input);
+		auto taped_json = parse(q, input);
+		taped_json.print_tape();
 
 	} catch (sycl::exception const &e) {
 		// Catches exceptions in the host code.

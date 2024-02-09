@@ -8,16 +8,6 @@
 #include <sycl/ext/intel/fpga_extensions.hpp>
 #include <sycl/sycl.hpp>
 
-/**
- * Compute the bitmaps for a single type of overflow on a single cache line.
- * @tparam InitialState Which overflow state to start with.
- * @param input Input to compute bitmaps for.
- * @return pair of Bitmaps for concrete initial state and input and the tokens inside a CacheLine
- */
-std::pair<Bitmaps, CacheLine> compute_bitmaps(OverflowState state, const CacheLine &input);
-
-class ComputeBitmapsKernel;
-
 const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
 	for (auto index = size_t{0}; index < CACHE_LINE_SIZE; ++index) {
 		stream << (map[index] ? '1' : '0');
@@ -26,33 +16,12 @@ const sycl::stream &operator<<(const sycl::stream &stream, const Bitmap &map) {
 }
 
 /**
- * Compute bitmaps by reading cache lines from input pipe and writing complete
- * bitmaps to output pipe.
- * @tparam CacheLineInputPipe Input pipe to read from.
- * @tparam BitmapsOutputPipe Output pipe to write to.
- * @param q Queue to use.
- * @param expect Number of cache lines to expect.
+ * Compute the bitmaps for a single type of overflow on a single cache line.
+ * @tparam InitialState Which overflow state to start with.
+ * @param input Input to compute bitmaps for.
+ * @return pair of Bitmaps for concrete initial state and input and the tokens inside a CacheLine
  */
-template <typename CacheLineInputPipe, typename BitmapsOutputPipe, typename TokenizedBitmapsToStringFilterPipe>
-void compute_bitmaps(sycl::queue &q, size_t expect) {
-	q.template single_task<class ComputeBitmapsKernel>([=]() {
-		auto actual_state = OverflowState::None;
-
-		for (auto line_index = size_t{0}; line_index < expect; ++line_index) {
-			const auto input = CacheLineInputPipe::read();
-
-			const auto [bitmaps, tokens] = compute_bitmaps(actual_state, input);
-			actual_state = bitmaps.overflow_state;
-
-			BitmapsOutputPipe::write(bitmaps);
-			TokenizedBitmapsToStringFilterPipe::write({input, bitmaps, tokens});
-		}
-
-		assert(actual_state == OverflowState::None);
-	});
-}
-
-std::pair<Bitmaps, CacheLine> compute_bitmaps(OverflowState state, const CacheLine &input) {
+std::pair<Bitmaps, CacheLine> compute_bitmaps_from_cacheline(OverflowState state, const CacheLine &input) {
 	auto bitmaps = Bitmaps{};
 
 	auto token_index = size_t{0};
@@ -111,4 +80,32 @@ std::pair<Bitmaps, CacheLine> compute_bitmaps(OverflowState state, const CacheLi
 
 	bitmaps.overflow_state = state;
 	return {bitmaps, tokens};
+}
+
+/**
+ * Compute bitmaps by reading cache lines from input pipe and writing complete
+ * bitmaps to output pipe.
+ * @tparam CacheLineInputPipe Input pipe to read from.
+ * @tparam BitmapsOutputPipe Output pipe to write to.
+ * @param q Queue to use.
+ * @param expect Number of cache lines to expect.
+ */
+template <typename CacheLineInputPipe, typename TokenizedBitmapsToStringFilterPipe>
+// template <typename CacheLineInputPipe, typename BitmapsOutputPipe, typename TokenizedBitmapsToStringFilterPipe>
+void compute_bitmaps(sycl::queue &q, size_t expect) {
+	q.template single_task<class ComputeBitmapsKernel>([=]() {
+		auto actual_state = OverflowState::None;
+
+		for (auto line_index = size_t{0}; line_index < expect; ++line_index) {
+			const auto input = CacheLineInputPipe::read();
+
+			const auto [bitmaps, tokens] = compute_bitmaps_from_cacheline(actual_state, input);
+			actual_state = bitmaps.overflow_state;
+
+			// BitmapsOutputPipe::write(bitmaps);
+			TokenizedBitmapsToStringFilterPipe::write({input, bitmaps, tokens});
+		}
+
+		assert(actual_state == OverflowState::None);
+	});
 }
