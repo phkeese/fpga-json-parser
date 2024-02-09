@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bitmaps.hpp"
 #include "definitions.hpp"
 #include "string_filter.hpp"
 #include "tape_builder.hpp"

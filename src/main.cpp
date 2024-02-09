@@ -1,18 +1,13 @@
-#include <bitset>
-#include <iomanip>
+#include <fstream>
 #include <iostream>
-#include <string_view>
-#include <vector>
 
 // oneAPI headers
-#include "bitmaps.hpp"
-#include "definitions.hpp"
+#include <sycl/ext/intel/fpga_extensions.hpp>
+#include <sycl/sycl.hpp>
+
 #include "exception_handler.hpp"
 #include "json_parser.hpp"
 #include "taped_json.hpp"
-#include <fstream>
-#include <sycl/ext/intel/fpga_extensions.hpp>
-#include <sycl/sycl.hpp>
 
 // Main function
 int main(int argc, char **argv) {
