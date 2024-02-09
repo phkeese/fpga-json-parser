@@ -8,7 +8,9 @@
 #include "bitmaps.hpp"
 #include "definitions.hpp"
 #include "exception_handler.hpp"
+#include "json_parser.hpp"
 #include "string_filter.hpp"
+#include "tape_builder.hpp"
 #include "taped_json.hpp"
 #include <fstream>
 #include <sycl/ext/intel/experimental/pipes.hpp>
@@ -16,31 +18,7 @@
 #include <sycl/sycl.hpp>
 
 // Functions
-std::vector<std::string_view> find_strings(sycl::queue &q, std::string input);
-template <typename InPipe, typename OutPipe> void start_string_filter(sycl::queue &q, const size_t count);
-/**
- * Write cache lines of data to a pipe.
- * @tparam WritePipe Pipe to write cache lines to.
- * @param input Data to write.
- * @return Number of cache lines to expect.
- */
-template <class WritePipe> size_t write_input(sycl::queue &q, std::string &input);
-
-// Pipes
-
-// Host -> Bitmap computation.
-using InputPipe = sycl::ext::intel::experimental::pipe<class InputPipeID, CacheLine, PIPELINE_DEPTH>;
-
-// Host -> String filter.
-using CachelineToStringFilterPipe =
-	sycl::ext::intel::experimental::pipe<class CachelineToStringFilterPipeID, CacheLine, PIPELINE_DEPTH>;
-
-// Bitmap computation -> String filter (both device).
-using TokenizedCachelinesToStringFilterPipe =
-	sycl::ext::intel::pipe<class TokenizedCachelinesToStringFilterPipeID, TokenizedCacheLine, PIPELINE_DEPTH>;
-
-using OutputCacheLinePipe =
-	sycl::ext::intel::experimental::pipe<class OutputCacheLinePipeID, OutputCacheLine, PIPELINE_DEPTH>;
+void find_strings(sycl::queue &q, std::string input);
 
 // Main function
 int main(int argc, char **argv) {
@@ -75,7 +53,7 @@ int main(int argc, char **argv) {
 			input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 		}
 
-		auto strings = find_strings(q, input);
+		find_strings(q, input);
 
 	} catch (sycl::exception const &e) {
 		// Catches exceptions in the host code.
@@ -93,133 +71,4 @@ int main(int argc, char **argv) {
 	}
 
 	return EXIT_SUCCESS;
-}
-
-using DebugBitmapsPipe = sycl::ext::intel::pipe<class DebugBitmapsPipeId, Bitmaps, PIPELINE_DEPTH>;
-
-// Function definitions
-std::vector<std::string_view> find_strings(sycl::queue &q, std::string input) {
-	auto cache_line_count = write_input<InputPipe>(q, input);
-
-	compute_bitmaps<InputPipe, DebugBitmapsPipe, TokenizedCachelinesToStringFilterPipe>(q, cache_line_count);
-	start_string_filter<TokenizedCachelinesToStringFilterPipe, OutputCacheLinePipe>(q, cache_line_count);
-
-	auto output_bitmaps = std::vector<Bitmaps>(cache_line_count);
-	auto output_buffer = sycl::buffer{output_bitmaps};
-
-	q.submit([&](auto &h) {
-		auto output_accessor = sycl::accessor{output_buffer, h, sycl::write_only};
-		h.template single_task<class ReadKernel>([=]() {
-			for (auto index = size_t{0}; index < cache_line_count; ++index) {
-				output_accessor[index] = DebugBitmapsPipe::read();
-			}
-		});
-	});
-	q.wait();
-
-	// for (auto &bitmaps : output_bitmaps) {
-	// 	std::cout << "Input: ";
-	// 	for (auto c : bitmaps.input) {
-	// 		if (std::isprint(c)) {
-	// 			std::cout << c;
-	// 		} else {
-	// 			std::cout << ".";
-	// 		}
-	// 	}
-	// 	std::cout << "\n";
-
-	// 	auto string_bits = bitmaps.is_string.to_string();
-	// 	std::reverse(string_bits.begin(), string_bits.end());
-	// 	auto escaped_bits = bitmaps.is_escaped.to_string();
-	// 	std::reverse(escaped_bits.begin(), escaped_bits.end());
-
-	// 	std::cout << "string:" << string_bits << "\n"
-	// 			  << "escapd:" << escaped_bits << "\n"
-	// 			  << "state: ";
-	// 	print(std::cout, bitmaps.overflow_state);
-	// 	std::cout << "\n";
-	// }
-
-	std::vector<std::string> strings;
-	auto tape = std::vector<Token>{};
-	auto had_overflow = false;
-	for (auto index = size_t{0}; index < cache_line_count; ++index) {
-		// Get the output from the string filter.
-		const auto output = OutputCacheLinePipe::read(q);
-
-		const auto &chars = output.line;
-		const auto &lengths = output.string_lengths;
-
-		const auto string_count = lengths[0];
-		auto char_index = size_t{0};
-
-		auto string_index = size_t{0};
-		if (had_overflow && lengths[CACHE_LINE_SIZE - 2] == 1) {
-			const auto string_length = lengths[++string_index];
-			// std::cout << "before: " << strings.back();
-			strings.back().append(chars.begin(), chars.begin() + string_length);
-			// std::cout << " after: " << strings.back() << std::endl;
-			char_index += string_length;
-		}
-
-		for (; string_index < string_count; ++string_index) {
-			const auto string_length = lengths[string_index + 1];
-			strings.emplace_back(std::string{chars.begin() + char_index, chars.begin() + char_index + string_length});
-			char_index += string_length;
-		}
-
-		if (lengths[CACHE_LINE_SIZE - 1] == 1) {
-			had_overflow = true;
-		} else {
-			had_overflow = false;
-		}
-
-		// Get the output from the tokenizer.
-		const auto &tokens = output.tokens;
-		for (auto token_index = size_t{0}; token_index < CACHE_LINE_SIZE; ++token_index) {
-			const auto token = static_cast<Token>(tokens[token_index]);
-
-			if (token == Token::EndOfTokens) {
-				break;
-			}
-
-			tape.push_back(token);
-		}
-	}
-
-	const auto taped_json = TapedJson{std::move(tape), std::move(strings)};
-	// std::cout << "taped_json.print_tokes():" << std::endl;
-	// taped_json.print_tokes();
-	// std::cout << "\n taped_json.print_strings():" << std::endl;
-	// taped_json.print_strings();
-	std::cout << "\n taped_json.print_tape():" << std::endl;
-	taped_json.print_tape();
-
-	return std::vector<std::string_view>();
-}
-
-template <class WritePipe> size_t write_input(sycl::queue &q, std::string &input) {
-	// Check if input size is divisible by CACHE_LINE_SIZE
-	if (input.size() % CACHE_LINE_SIZE != 0) {
-		// Calculate the number of whitespaces to add
-		const auto whitespace_count = CACHE_LINE_SIZE - (input.size() % CACHE_LINE_SIZE);
-		// Append whitespaces to the input
-		input.append(whitespace_count, ' ');
-	}
-	const auto line_count = input.size() / CACHE_LINE_SIZE;
-
-	auto input_buffer = sycl::buffer{input};
-	q.submit([&](auto &h) {
-		auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
-		h.template single_task([=]() {
-			for (auto line_index = size_t{0}; line_index < line_count; ++line_index) {
-				auto begin = input_accessor.begin() + line_index * CACHE_LINE_SIZE;
-				auto end = input_accessor.begin() + (line_index + 1) * CACHE_LINE_SIZE;
-				auto line = CacheLine{};
-				std::copy(begin, end, line.begin());
-				WritePipe::write(line);
-			}
-		});
-	});
-	return line_count;
 }

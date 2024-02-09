@@ -3,6 +3,9 @@
 #include <array>
 #include <bitset>
 
+#include <sycl/ext/intel/experimental/pipes.hpp>
+#include <sycl/ext/intel/fpga_extensions.hpp>
+
 // Constants
 constexpr auto CACHE_LINE_SIZE = size_t{8};
 constexpr auto PIPELINE_DEPTH = size_t{1};
@@ -74,29 +77,16 @@ struct OutputCacheLine {
 	CacheLine tokens;
 };
 
-// //
-// // Extend a type 'T' with a boolean flag
-// //
-// template <typename T>
-// struct FlagBundle {
-//   using value_type = T;
+// Host -> Bitmap computation.
+using InputPipe = sycl::ext::intel::experimental::pipe<class InputPipeID, CacheLine, PIPELINE_DEPTH>;
 
-//   // ensure the type carried in this class has a subscript operator and that
-//   // it has a static integer member named 'size'
-//   static_assert(fpga_tools::has_subscript_v<T>);
+// Host -> String filter.
+using CachelineToStringFilterPipe =
+	sycl::ext::intel::experimental::pipe<class CachelineToStringFilterPipeID, CacheLine, PIPELINE_DEPTH>;
 
-//   // this is used by the functions in memory_utils.hpp to ensure the size of
-//   // the type in the SYCL pipe matches the memory width
-//   static constexpr size_t size = T::size;
+// Bitmap computation -> String filter (both device).
+using TokenizedCachelinesToStringFilterPipe =
+	sycl::ext::intel::pipe<class TokenizedCachelinesToStringFilterPipeID, TokenizedCacheLine, PIPELINE_DEPTH>;
 
-//   FlagBundle() : data(T()), flag(false) {}
-//   FlagBundle(T d_in) : data(d_in), flag(false) {}
-//   FlagBundle(T d_in, bool f_in) : data(d_in), flag(f_in) {}
-//   FlagBundle(bool f_in) : data(T()), flag(f_in) {}
-
-//   unsigned char& operator[](int i) { return data[i]; }
-//   const unsigned char& operator[](int i) const { return data[i]; }
-
-//   T data;
-//   bool flag;
-// };
+using OutputCacheLinePipe =
+	sycl::ext::intel::experimental::pipe<class OutputCacheLinePipeID, OutputCacheLine, PIPELINE_DEPTH>;
