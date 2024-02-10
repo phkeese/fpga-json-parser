@@ -10,6 +10,8 @@
 #include "simdjson/simdjson.h"
 #include "taped_json.hpp"
 
+using namespace simdjson;
+
 // Main function
 int main(int argc, char **argv) {
 	try {
@@ -44,13 +46,17 @@ int main(int argc, char **argv) {
 		}
 
 		simdjson::ondemand::parser parser;
-		simdjson::padded_string json = simdjson::padded_string::load("../data/raw/twitter.json");
+		simdjson::padded_string json = simdjson::padded_string::load("../data/processed/twitter_trimmed.json");
 		simdjson::ondemand::document tweets = parser.iterate(json);
-		std::cout << uint64_t(tweets["search_metadata"]["count"]) << " results." << std::endl;
+
+		ondemand::object object = tweets.get_object();
+		for (auto field : object) {
+			std::cout << field << std::endl;
+		}
+		// std::cout << object << " results." << std::endl;
 
 		auto taped_json = parse(q, input);
 		taped_json.print_tape();
-
 	} catch (sycl::exception const &e) {
 		// Catches exceptions in the host code.
 		std::cerr << "Caught a SYCL host exception:\n" << e.what() << "\n";

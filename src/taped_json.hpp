@@ -150,7 +150,13 @@ class TapedJson {
 		}
 	}
 
-	uint64_t string_count() const { return _strings.size(); }
+	uint64_t count_string_lengths() const {
+		auto count = uint64_t{0};
+		for (const auto &s : _strings) {
+			count += s.size();
+		}
+		return count;
+	}
 
 	uint32_t max_depth() const {
 		auto max_depth = uint32_t{0};
