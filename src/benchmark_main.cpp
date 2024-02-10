@@ -2,7 +2,7 @@
 #include <dirent.h>
 #include <iostream>
 
-constexpr auto JSON_PATH = "../data/processed";
+constexpr auto JSON_PATH = "../data/processed/";
 
 extern void register_fpga_benchmarks_for(const std::string &dirname, const std::string &filename);
 extern void register_simdjson_benchmarks_for(const std::string &dirname, const std::string &filename);
@@ -14,7 +14,7 @@ std::vector<std::string> getAllFilenames(const std::string &folderPath) {
 	struct dirent *epdf;
 
 	dpdf = opendir(JSON_PATH);
-	if (dpdf != NULL) {
+	if (dpdf) {
 		while ((epdf = readdir(dpdf))) {
 			if (epdf->d_name[0] != '.') {
 				filenames.emplace_back(epdf->d_name);

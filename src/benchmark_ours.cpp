@@ -21,23 +21,24 @@ static sycl::queue setup_queue() {
 static void MAX_DEPTH_FPGA(benchmark::State &state, const std::string &filename) {
 	// Perform setup here
 	auto q = setup_queue();
+	std::ifstream file(filename);
+	const auto input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 
 	for (auto _ : state) {
-		std::ifstream file(filename);
-		const auto input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 		const auto json = parse(q, input);
 		auto max_depth = json.max_depth();
 		(void)max_depth;
+		//		std::cout << max_depth << std::endl;
 	}
 }
 
 static void ONLY_PARSE_FPGA(benchmark::State &state, const std::string &filename) {
 	// Perform setup here
 	auto q = setup_queue();
+	std::ifstream file(filename);
+	const auto input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 
 	for (auto _ : state) {
-		std::ifstream file(filename);
-		const auto input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 		const auto json = parse(q, input);
 		(void)json;
 	}
@@ -46,12 +47,14 @@ static void ONLY_PARSE_FPGA(benchmark::State &state, const std::string &filename
 static void COUNT_STRING_LENGTHS_FPGA(benchmark::State &state, const std::string &filename) {
 	// Perform setup here
 	auto q = setup_queue();
+	std::ifstream file(filename);
+	const auto input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 
 	for (auto _ : state) {
-		std::ifstream file(filename);
-		const auto input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 		const auto json = parse(q, input);
-		(void)json.count_string_lengths();
+		auto count = json.count_string_lengths();
+		(void)count;
+		//		std::cout << count << std::endl;
 	}
 }
 

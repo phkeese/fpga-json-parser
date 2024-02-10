@@ -334,6 +334,8 @@ set(BENCHMARK_SOURCE_FILES
     src/benchmark_main.cpp
     src/benchmark_ours.cpp
     src/benchmark_simdjson.cpp
+    src/simdjson/simdjson.cpp
+    src/simdjson/simdjson.h
     ${SOURCE_FILES}
     )
 list(REMOVE_ITEM BENCHMARK_SOURCE_FILES src/main.cpp)
