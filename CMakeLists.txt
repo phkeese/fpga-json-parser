@@ -26,7 +26,9 @@ set(SOURCE_FILES
     src/json_parser.hpp
     src/string_filter.hpp
     src/tape_builder.hpp
-    src/taped_json.hpp)
+    src/taped_json.hpp
+    src/simdjson/simdjson.h
+    src/simdjson/simdjson.cpp)
 set(TARGET_NAME json_parser)
 
 # Use cmake -DFPGA_DEVICE=<board-support-package>:<board-variant> to choose a

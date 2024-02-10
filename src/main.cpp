@@ -7,6 +7,7 @@
 
 #include "exception_handler.hpp"
 #include "json_parser.hpp"
+#include "simdjson/simdjson.h"
 #include "taped_json.hpp"
 
 // Main function
@@ -41,6 +42,11 @@ int main(int argc, char **argv) {
 			}
 			input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 		}
+
+		simdjson::ondemand::parser parser;
+		simdjson::padded_string json = simdjson::padded_string::load("../data/raw/twitter.json");
+		simdjson::ondemand::document tweets = parser.iterate(json);
+		std::cout << uint64_t(tweets["search_metadata"]["count"]) << " results." << std::endl;
 
 		auto taped_json = parse(q, input);
 		taped_json.print_tape();
