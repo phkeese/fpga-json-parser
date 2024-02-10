@@ -310,16 +310,20 @@ add_custom_target(displayFPGACompileCommands
         COMMENT "To compile manually:\n${COMPILE_COMMAND}\nTo link manually:\n${LINK_COMMAND}")
 add_dependencies(${FPGA_TARGET} displayFPGACompileCommands)
 
-include(FetchContent)
+# include(FetchContent)
 
-FetchContent_Declare(googlebenchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG main) # need main for benchmark::benchmark
+# FetchContent_Declare(googlebenchmark
+#         GIT_REPOSITORY https://github.com/google/benchmark.git
+#         GIT_TAG main) # need main for benchmark::benchmark
 
-set(BENCHMARK_ENABLE_TESTING OFF)
+# set(BENCHMARK_ENABLE_TESTING OFF)
 
-FetchContent_MakeAvailable(
-        googlebenchmark)
+# FetchContent_MakeAvailable(
+#         googlebenchmark)
+
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Suppressing benchmark's tests" FORCE)
+add_subdirectory(benchmark)
+
 
     
 
@@ -338,5 +342,5 @@ target_compile_options(${BENCH_TARGET_EMU} PRIVATE ${EMULATOR_COMPILE_FLAGS})
 target_link_libraries(${BENCH_TARGET_EMU} ${COMMON_LINK_FLAGS})
 target_link_libraries(${BENCH_TARGET_EMU} ${EMULATOR_LINK_FLAGS})
 target_include_directories(${BENCH_TARGET_EMU} PRIVATE ${USER_INCLUDE_PATHS})
-target_link_libraries(${BENCH_TARGET_EMU} benchmark::benchmark)
+target_link_libraries(${BENCH_TARGET_EMU} benchmark)
 set_target_properties(${BENCH_TARGET_EMU} PROPERTIES OUTPUT_NAME ${BENCH_OUTPUT_NAME_EMU})
