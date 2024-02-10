@@ -1,5 +1,5 @@
 #include <benchmark/benchmark.h>
-#include <filesystem>
+#include <dirent.h>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -12,16 +12,30 @@
 
 using namespace simdjson;
 
-constexpr auto JSON_PATH = "../data/processed";
-// constexpr auto JSON_PATH = "../data/few";
+// constexpr auto JSON_PATH = "../data/processed";
+constexpr auto JSON_PATH = "../data/few";
 
 std::vector<std::string> getAllFilenames(const std::string &folderPath) {
 	std::vector<std::string> filenames;
-	for (const auto &entry : std::filesystem::directory_iterator(folderPath)) {
-		if (entry.is_regular_file()) {
-			filenames.push_back("../data/processed/" + entry.path().filename().string());
+
+	DIR *dpdf;
+	struct dirent *epdf;
+
+	dpdf = opendir(JSON_PATH);
+	if (dpdf != NULL) {
+		while (epdf = readdir(dpdf)) {
+			// printf("Filename: %s", epdf->d_name);
+			if (epdf->d_name[0] != '.' && epdf->d_name[0] != '..') {
+				filenames.push_back(folderPath + "/" + epdf->d_name);
+			}
 		}
 	}
+	closedir(dpdf);
+
+	for (const auto &filename : filenames) {
+		std::cout << filename << std::endl;
+	}
+
 	return filenames;
 }
 
