@@ -150,6 +150,30 @@ class TapedJson {
 		}
 	}
 
+	uint64_t string_count() const { return _strings.size(); }
+
+	uint32_t max_depth() const {
+		auto max_depth = uint32_t{0};
+		auto current_depth = uint32_t{0};
+		for (const auto &[token, value] : _tape) {
+			switch (token) {
+			case Token::ObjectBeginToken:
+			case Token::ArrayBeginToken:
+				++current_depth;
+				break;
+			case Token::ObjectEndToken:
+			case Token::ArrayEndToken:
+				--current_depth;
+				break;
+			default:
+				break;
+			}
+			max_depth = std::max(max_depth, current_depth);
+		}
+		return max_depth;
+	}
+
+  private:
 	std::vector<std::pair<Token, JsonValue>> _tape;
 	std::vector<std::string> _strings;
 };

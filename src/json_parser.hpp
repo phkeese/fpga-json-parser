@@ -1,12 +1,12 @@
 #pragma once
 
+#include <sycl/sycl.hpp>
+
 #include "definitions.hpp"
 #include "string_filter.hpp"
 #include "tape_builder.hpp"
 #include "taped_json.hpp"
 #include "tokenizer.hpp"
-
-// declare kernel and pipe names at the global scope to reduce name mangling
 
 // Host -> Bitmap computation.
 class ProducerId;
@@ -59,7 +59,7 @@ template <typename Id, typename InPipe> sycl::event submit_producer(sycl::queue 
 	return producer_event;
 }
 
-TapedJson parse(sycl::queue &q, std::string &input) {
+TapedJson parse(sycl::queue &q, const std::string &input) {
 	const auto cache_line_count =
 		input.size() % CACHE_LINE_SIZE == 0 ? input.size() / CACHE_LINE_SIZE : input.size() / CACHE_LINE_SIZE + 1;
 
