@@ -90,23 +90,34 @@ std::pair<Bitmaps, CacheLine> compute_bitmaps(OverflowState state, const CacheLi
  * @param q Queue to use.
  * @param expect Number of cache lines to expect.
  */
-template <typename Id, typename InPipe, typename OutPipe>
-// template <typename typename InPipe, typename OutPipe, typename DebugPipe>
-sycl::event submit_tokenizer(sycl::queue &q, size_t expect) {
-	const auto tokenizer_event = q.template single_task<Id>([=]() {
-		auto actual_state = OverflowState::None;
+template <typename Id, typename InPipe, typename OutPipe> sycl::event submit_tokenizer(sycl::queue &q, size_t expect) {
+	const auto tokenizer_event = q.submit([&](auto &h) {
+		// auto out = sycl::stream(4096, 1024, h);
+		h.template single_task<Id>([=]() {
+			auto last_overflow_state = OverflowState::None;
 
-		for (auto line_index = size_t{0}; line_index < expect; ++line_index) {
-			const auto input = InPipe::read();
+			for (auto line_index = size_t{0}; line_index < expect; ++line_index) {
+				const auto input = InPipe::read();
 
-			const auto [bitmaps, tokens] = compute_bitmaps(actual_state, input);
-			actual_state = bitmaps.overflow_state;
+				// out << "Input: ";
+				// for (auto c : input) {
+				// 	if (std::isprint(c)) {
+				// 		out << c;
+				// 	} else {
+				// 		out << ".";
+				// 	}
+				// }
+				// out << "\n";
 
-			// DebugPipe::write(bitmaps);
-			OutPipe::write({input, bitmaps, tokens});
-		}
+				const auto [bitmaps, tokens] = compute_bitmaps(last_overflow_state, input);
+				last_overflow_state = bitmaps.overflow_state;
 
-		assert(actual_state == OverflowState::None);
+				// out << "string:" << bitmaps.is_string << "\n"
+				// 	<< "escapd:" << bitmaps.is_escaped << "\n";
+
+				OutPipe::write({input, bitmaps, tokens});
+			}
+		});
 	});
 
 	return tokenizer_event;

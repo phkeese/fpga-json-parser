@@ -30,7 +30,7 @@ class TapedJson {
 
 	void print_strings() const {
 		for (const auto &s : _strings) {
-			std::cout << s << std::endl;
+			std::cout << "+++" << s << "+++" << std::endl;
 		}
 	}
 

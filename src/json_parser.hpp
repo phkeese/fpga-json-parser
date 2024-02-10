@@ -24,9 +24,6 @@ class StringFilterId;
 class OutPipeId;
 using OutPipe = sycl::ext::intel::experimental::pipe<OutPipeId, OutputCacheLine, PIPELINE_DEPTH>;
 
-// class DebugPipeId;
-// using DebugPipe = sycl::ext::intel::experimental::pipe<DebugPipeId, Bitmaps, PIPELINE_DEPTH>;
-
 template <typename Id, typename InPipe> sycl::event submit_producer(sycl::queue &q, const std::string &input) {
 	const auto input_size = input.size();
 

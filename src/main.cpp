@@ -28,10 +28,10 @@ int main(int argc, char **argv) {
 
 		auto device = q.get_device();
 
-		std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
+		// std::cout << "Running on device: " << device.get_info<sycl::info::device::name>().c_str() << std::endl;
 
 		auto input = std::string{
-			R"({"k":"value", "k\"y": "\"",   "key": "unescaped\"", "thisisareallylongstringitinvolvesmultiplecachelines": "blub\nmore"})"};
+			R"({"k":"value", "k\"y": "\"",   "key": "unescaped\"", "empty:": "", "thisisareallylongstringitinvolvesmultiplecachelines": "blub\nmore"})"};
 		if (argc > 1) {
 			const auto filename = argv[1];
 			std::ifstream file(filename);

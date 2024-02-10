@@ -19,9 +19,11 @@ sycl::event submit_string_filter(sycl::queue &q, const size_t count) {
 				string_lengths[0] = 0;
 
 				for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
+					auto started_string = bool{false};
 					auto current_string_length = uint16_t{0};
 
 					for (; byte_index < CACHE_LINE_SIZE && bitmaps.is_string[byte_index]; ++byte_index) {
+						started_string = true;
 						const auto c = line[byte_index];
 
 						// If the current character is escaped, append the corresponding character to the output.
@@ -45,15 +47,13 @@ sycl::event submit_string_filter(sycl::queue &q, const size_t count) {
 						}
 					}
 
-					if (current_string_length > 0) {
+					if (started_string) {
 						string_lengths[0] += 1;
 						string_lengths[string_lengths[0]] = current_string_length;
 					}
 				}
 
-				if ((bitmaps.is_string[CACHE_LINE_SIZE - 2] && bitmaps.overflow_state == OverflowState::String) ||
-					(bitmaps.is_string[CACHE_LINE_SIZE - 3] && bitmaps.is_string[CACHE_LINE_SIZE - 2] &&
-					 bitmaps.overflow_state == OverflowState::StringWithBackslash)) {
+				if (bitmaps.is_string[CACHE_LINE_SIZE - 1]) {
 					string_lengths[CACHE_LINE_SIZE - 1] = 1;
 				} else {
 					string_lengths[CACHE_LINE_SIZE - 1] = 0;
