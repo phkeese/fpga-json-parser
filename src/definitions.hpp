@@ -56,7 +56,7 @@ template <typename OS> constexpr OS &print(OS &os, OverflowState state) {
 }
 
 struct Bitmaps {
-	CacheLine input;
+	// CacheLine input;
 	Bitmap is_string;
 	Bitmap is_escaped;
 	OverflowState overflow_state;

@@ -21,7 +21,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 ###############################################################################
 set(SOURCE_FILES
     src/main.cpp
-    src/bitmaps.hpp
+    src/tokenizer.hpp
     src/definitions.hpp
     src/json_parser.hpp
     src/string_filter.hpp

@@ -29,7 +29,7 @@ std::pair<Bitmaps, CacheLine> compute_bitmaps(OverflowState state, const CacheLi
 
 	auto emit_token = [&](Token token) { tokens[token_index++] = token; };
 
-	bitmaps.input = input;
+	// bitmaps.input = input;
 	for (auto byte_index = size_t{0}; byte_index < CACHE_LINE_SIZE; ++byte_index) {
 		const auto here = input[byte_index];
 		switch (state) {
@@ -88,15 +88,16 @@ std::pair<Bitmaps, CacheLine> compute_bitmaps(OverflowState state, const CacheLi
  * @tparam CacheLineInputPipe Input pipe to read from.
  * @tparam BitmapsOutputPipe Output pipe to write to.
  * @param q Queue to use.
- * @param expect Number of cache lines to expect.
+ * @param cache_line_count Number of cache lines to expect.
  */
-template <typename Id, typename InPipe, typename OutPipe> sycl::event submit_tokenizer(sycl::queue &q, size_t expect) {
+template <typename Id, typename InPipe, typename OutPipe>
+sycl::event submit_tokenizer(sycl::queue &q, const size_t cache_line_count) {
 	const auto tokenizer_event = q.submit([&](auto &h) {
 		// auto out = sycl::stream(4096, 1024, h);
 		h.template single_task<Id>([=]() {
 			auto last_overflow_state = OverflowState::None;
 
-			for (auto line_index = size_t{0}; line_index < expect; ++line_index) {
+			for (auto line_index = size_t{0}; line_index < cache_line_count; ++line_index) {
 				const auto input = InPipe::read();
 
 				// out << "Input: ";
