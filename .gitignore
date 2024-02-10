@@ -63,8 +63,6 @@
 
 .vscode
 
-data/processed/
-
 # Gradle
 .idea/**/gradle.xml
 .idea/**/libraries
