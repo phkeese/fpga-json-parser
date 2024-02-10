@@ -12,8 +12,8 @@
 
 using namespace simdjson;
 
-// constexpr auto JSON_PATH = "../data/processed";
-constexpr auto JSON_PATH = "../data/few";
+constexpr auto JSON_PATH = "../data/processed";
+// constexpr auto JSON_PATH = "../data/few";
 
 std::vector<std::string> getAllFilenames(const std::string &folderPath) {
 	std::vector<std::string> filenames;
@@ -32,9 +32,9 @@ std::vector<std::string> getAllFilenames(const std::string &folderPath) {
 	}
 	closedir(dpdf);
 
-	for (const auto &filename : filenames) {
-		std::cout << filename << std::endl;
-	}
+	// for (const auto &filename : filenames) {
+	// 	std::cout << filename << std::endl;
+	// }
 
 	return filenames;
 }
