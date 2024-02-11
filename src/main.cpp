@@ -45,14 +45,14 @@ int main(int argc, char **argv) {
 			input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 		}
 
-		simdjson::ondemand::parser parser;
-		simdjson::padded_string json = simdjson::padded_string::load("../data/processed/twitter_trimmed.json");
-		simdjson::ondemand::document tweets = parser.iterate(json);
+		// simdjson::ondemand::parser parser;
+		// simdjson::padded_string json = simdjson::padded_string::load("../data/processed/twitter_trimmed.json");
+		// simdjson::ondemand::document tweets = parser.iterate(json);
 
-		ondemand::object object = tweets.get_object();
-		for (auto field : object) {
-			std::cout << field << std::endl;
-		}
+		// ondemand::object object = tweets.get_object();
+		// for (auto field : object) {
+		// 	std::cout << field << std::endl;
+		// }
 		// std::cout << object << " results." << std::endl;
 
 		auto taped_json = parse(q, input);

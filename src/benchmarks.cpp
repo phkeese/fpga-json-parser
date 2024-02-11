@@ -23,9 +23,9 @@ std::vector<std::string> getAllFilenames(const std::string &folderPath) {
 
 	dpdf = opendir(JSON_PATH);
 	if (dpdf != NULL) {
-		while (epdf = readdir(dpdf)) {
+		while ((epdf = readdir(dpdf))) {
 			// printf("Filename: %s", epdf->d_name);
-			if (epdf->d_name[0] != '.' && epdf->d_name[0] != '..') {
+			if (epdf->d_name[0] != '.') {
 				filenames.push_back(folderPath + "/" + epdf->d_name);
 			}
 		}

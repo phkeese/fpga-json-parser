@@ -24,7 +24,8 @@ class StringFilterId;
 class OutPipeId;
 using OutPipe = sycl::ext::intel::experimental::pipe<OutPipeId, OutputCacheLine, PIPELINE_DEPTH>;
 
-template <typename Id, typename InPipe> sycl::event submit_producer(sycl::queue &q, const std::string &input) {
+template <typename Id, typename InPipe>
+std::pair<sycl::event, size_t> submit_producer(sycl::queue &q, const std::string &input) {
 	const auto input_size = input.size();
 
 	// Check if input size is divisible by CACHE_LINE_SIZE
@@ -56,14 +57,12 @@ template <typename Id, typename InPipe> sycl::event submit_producer(sycl::queue 
 		});
 	});
 
-	return producer_event;
+	const auto final_cache_line_count = underfull_cache_line ? cache_line_count + 1 : cache_line_count;
+	return {producer_event, final_cache_line_count};
 }
 
 TapedJson parse(sycl::queue &q, const std::string &input) {
-	const auto cache_line_count =
-		input.size() % CACHE_LINE_SIZE == 0 ? input.size() / CACHE_LINE_SIZE : input.size() / CACHE_LINE_SIZE + 1;
-
-	const auto producer_event = submit_producer<ProducerId, InPipe>(q, input);
+	const auto [producer_event, cache_line_count] = submit_producer<ProducerId, InPipe>(q, input);
 
 	const auto tokenizer_event =
 		submit_tokenizer<TokenizerId, InPipe, TokenizerToStringFilterPipe>(q, cache_line_count);

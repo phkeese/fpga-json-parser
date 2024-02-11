@@ -4,8 +4,15 @@
 #include "string_filter.hpp"
 #include "taped_json.hpp"
 
+// template <typename OutPipe>
+// void build_tapee(sycl::queue &q, const size_t cache_line_count, std::vector<Token> &tape,
+// 				 std::vector<std::string> &strings) {
+// 	auto tape_buffer = sycl::buffer{tape};
+// 	auto strings_buffer = sycl::buffer{strings};
+// }
+
 template <typename OutPipe> TapedJson build_tape(sycl::queue &q, const size_t cache_line_count) {
-	std::vector<std::string> strings;
+	auto strings = std::vector<std::string>{};
 	auto tape = std::vector<Token>{};
 	auto had_overflow = false;
 	for (auto index = size_t{0}; index < cache_line_count; ++index) {
