@@ -4,7 +4,7 @@
 #include <bitset>
 
 // Constants
-constexpr auto CACHE_LINE_SIZE = size_t{8};
+constexpr auto CACHE_LINE_SIZE = size_t{64};
 constexpr auto PIPELINE_DEPTH = size_t{1};
 
 // Types
