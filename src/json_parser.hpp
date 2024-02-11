@@ -24,6 +24,8 @@ class StringFilterId;
 class OutPipeId;
 using OutPipe = sycl::ext::intel::experimental::pipe<OutPipeId, OutputCacheLine, PIPELINE_DEPTH>;
 
+class ConsumerId;
+
 template <typename Id, typename InPipe>
 std::pair<sycl::event, size_t> submit_producer(sycl::queue &q, const std::string &input) {
 	const auto input_size = input.size();
@@ -70,7 +72,9 @@ TapedJson parse(sycl::queue &q, const std::string &input) {
 	const auto string_filter_event =
 		submit_string_filter<StringFilterId, TokenizerToStringFilterPipe, OutPipe>(q, cache_line_count);
 
-	const auto taped_json = build_tape<OutPipe>(q, cache_line_count);
+	auto output_cache_lines = std::vector<OutputCacheLine>{};
+	const auto consumer_event = submit_consumer<ConsumerId, OutPipe>(q, cache_line_count, output_cache_lines);
 
+	const auto taped_json = build_tape(cache_line_count, output_cache_lines);
 	return taped_json;
 }

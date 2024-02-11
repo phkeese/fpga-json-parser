@@ -4,23 +4,35 @@
 #include "string_filter.hpp"
 #include "taped_json.hpp"
 
-// template <typename OutPipe>
-// void build_tapee(sycl::queue &q, const size_t cache_line_count, std::vector<Token> &tape,
-// 				 std::vector<std::string> &strings) {
-// 	auto tape_buffer = sycl::buffer{tape};
-// 	auto strings_buffer = sycl::buffer{strings};
-// }
+template <typename Id, typename OutPipe>
+sycl::event submit_consumer(sycl::queue &q, const size_t cache_line_count,
+							std::vector<OutputCacheLine> &output_cache_lines) {
+	output_cache_lines.resize(cache_line_count);
+	auto output_buffer = sycl::buffer{output_cache_lines};
 
-template <typename OutPipe> TapedJson build_tape(sycl::queue &q, const size_t cache_line_count) {
+	const auto consumer_event = q.submit([&](auto &h) {
+		const auto output_accessor = sycl::accessor{output_buffer, h, sycl::write_only};
+
+		h.template single_task<Id>([=]() {
+			for (auto index = size_t{0}; index < cache_line_count; ++index) {
+				const auto output = OutPipe::read();
+				output_accessor[index] = output;
+			}
+		});
+	});
+
+	return consumer_event;
+}
+
+TapedJson build_tape(const size_t cache_line_count, const std::vector<OutputCacheLine> &output_cache_lines) {
+	assert(output_cache_lines.size() == cache_line_count);
+
 	auto strings = std::vector<std::string>{};
 	auto tape = std::vector<Token>{};
 	auto had_overflow = false;
 	for (auto index = size_t{0}; index < cache_line_count; ++index) {
-		// Get the output from the string filter.
-		const auto output = OutPipe::read(q);
-
-		const auto &chars = output.line;
-		const auto &lengths = output.string_lengths;
+		const auto &chars = output_cache_lines[index].line;
+		const auto &lengths = output_cache_lines[index].string_lengths;
 
 		const auto string_count = lengths[0];
 		auto char_index = size_t{0};
@@ -47,7 +59,7 @@ template <typename OutPipe> TapedJson build_tape(sycl::queue &q, const size_t ca
 		}
 
 		// Get the output from the tokenizer.
-		const auto &tokens = output.tokens;
+		const auto &tokens = output_cache_lines[index].tokens;
 		for (auto token_index = size_t{0}; token_index < CACHE_LINE_SIZE; ++token_index) {
 			const auto token = static_cast<Token>(tokens[token_index]);
 
