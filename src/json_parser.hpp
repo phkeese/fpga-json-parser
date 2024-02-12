@@ -30,27 +30,35 @@ template <typename Id, typename InPipe>
 std::pair<sycl::event, size_t> submit_producer(sycl::queue &q, const std::string &input) {
 	const auto input_size = input.size();
 
+	char *in;
+	if ((in = sycl::malloc_device<char>(input_size, q)) == nullptr) {
+		std::cerr << "ERROR: could not allocate space for 'in'\n";
+		std::terminate();
+	}
+
+	q.memcpy(in, input.data(), input_size * sizeof(char)).wait();
+
 	// Check if input size is divisible by CACHE_LINE_SIZE
 	const bool underfull_cache_line = input_size % CACHE_LINE_SIZE != 0;
 
 	const auto cache_line_count = input_size / CACHE_LINE_SIZE;
-	auto input_buffer = sycl::buffer{input};
+	// auto input_buffer = sycl::buffer{input};
 
 	const auto producer_event = q.submit([&](auto &h) {
-		const auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
+		// const auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
 
 		h.template single_task<Id>([=]() {
 			for (auto index = size_t{0}; index < cache_line_count; ++index) {
-				const auto begin = input_accessor.begin() + index * CACHE_LINE_SIZE;
-				const auto end = input_accessor.begin() + (index + 1) * CACHE_LINE_SIZE;
+				const auto *begin = in + index * CACHE_LINE_SIZE;
+				const auto *end = in + (index + 1) * CACHE_LINE_SIZE;
 				auto line = CacheLine{};
 				std::copy(begin, end, line.begin());
 				InPipe::write(line);
 			}
 
 			if (underfull_cache_line) {
-				const auto begin = input_accessor.begin() + cache_line_count * CACHE_LINE_SIZE;
-				const auto end = input_accessor.begin() + input_size;
+				const auto *begin = in + cache_line_count * CACHE_LINE_SIZE;
+				const auto *end = in + input_size;
 				auto line = CacheLine{};
 				std::copy(begin, end, line.begin());
 				std::fill(line.begin() + (input_size % CACHE_LINE_SIZE), line.end(), ' ');
