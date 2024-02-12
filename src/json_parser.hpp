@@ -31,22 +31,19 @@ std::pair<sycl::event, size_t> submit_producer(sycl::queue &q, const std::string
 	const auto input_size = input.size();
 
 	char *in;
-	if ((in = sycl::malloc_device<char>(input_size, q)) == nullptr) {
+	if ((in = sycl::malloc_shared<char>(input_size, q)) == nullptr) {
 		std::cerr << "ERROR: could not allocate space for 'in'\n";
 		std::terminate();
 	}
 
-	q.memcpy(in, input.data(), input_size * sizeof(char)).wait();
+	std::memcpy(in, input.data(), input_size * sizeof(char));
 
 	// Check if input size is divisible by CACHE_LINE_SIZE
 	const bool underfull_cache_line = input_size % CACHE_LINE_SIZE != 0;
 
 	const auto cache_line_count = input_size / CACHE_LINE_SIZE;
-	// auto input_buffer = sycl::buffer{input};
 
 	const auto producer_event = q.submit([&](auto &h) {
-		// const auto input_accessor = sycl::accessor{input_buffer, h, sycl::read_only};
-
 		h.template single_task<Id>([=]() {
 			for (auto index = size_t{0}; index < cache_line_count; ++index) {
 				const auto *begin = in + index * CACHE_LINE_SIZE;
@@ -72,17 +69,26 @@ std::pair<sycl::event, size_t> submit_producer(sycl::queue &q, const std::string
 }
 
 TapedJson parse(sycl::queue &q, const std::string &input) {
+	std::cout << "Started parsing." << std::endl;
+
 	const auto [producer_event, cache_line_count] = submit_producer<ProducerId, InPipe>(q, input);
+	std::cout << "Submitted Producer." << std::endl;
 
 	const auto tokenizer_event =
 		submit_tokenizer<TokenizerId, InPipe, TokenizerToStringFilterPipe>(q, cache_line_count);
+	std::cout << "Submitted Tokenizer." << std::endl;
 
 	const auto string_filter_event =
 		submit_string_filter<StringFilterId, TokenizerToStringFilterPipe, OutPipe>(q, cache_line_count);
+	std::cout << "Submitted String FIlter." << std::endl;
 
-	auto output_cache_lines = std::vector<OutputCacheLine>{};
-	const auto consumer_event = submit_consumer<ConsumerId, OutPipe>(q, cache_line_count, output_cache_lines);
+	auto [consumer_event, output_cache_lines] = submit_consumer<ConsumerId, OutPipe>(q, cache_line_count);
+	std::cout << "Submitted Consumer." << std::endl;
+
+	consumer_event.wait();
 
 	const auto taped_json = build_tape(cache_line_count, output_cache_lines);
+	std::cout << "Finished Parsing." << std::endl;
+
 	return taped_json;
 }

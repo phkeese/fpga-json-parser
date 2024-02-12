@@ -5,28 +5,27 @@
 #include "taped_json.hpp"
 
 template <typename Id, typename OutPipe>
-sycl::event submit_consumer(sycl::queue &q, const size_t cache_line_count,
-							std::vector<OutputCacheLine> &output_cache_lines) {
-	output_cache_lines.resize(cache_line_count);
-	auto output_buffer = sycl::buffer{output_cache_lines};
+std::pair<sycl::event, OutputCacheLine *> submit_consumer(sycl::queue &q, const size_t cache_line_count) {
+
+	OutputCacheLine *output_cache_lines;
+	if ((output_cache_lines = sycl::malloc_shared<OutputCacheLine>(cache_line_count, q)) == nullptr) {
+		std::cerr << "ERROR: could not allocate space for 'in'\n";
+		std::terminate();
+	}
 
 	const auto consumer_event = q.submit([&](auto &h) {
-		const auto output_accessor = sycl::accessor{output_buffer, h, sycl::write_only};
-
 		h.template single_task<Id>([=]() {
 			for (auto index = size_t{0}; index < cache_line_count; ++index) {
 				const auto output = OutPipe::read();
-				output_accessor[index] = output;
+				output_cache_lines[index] = output;
 			}
 		});
 	});
 
-	return consumer_event;
+	return {consumer_event, output_cache_lines};
 }
 
-TapedJson build_tape(const size_t cache_line_count, const std::vector<OutputCacheLine> &output_cache_lines) {
-	assert(output_cache_lines.size() == cache_line_count);
-
+TapedJson build_tape(const size_t cache_line_count, const OutputCacheLine *output_cache_lines) {
 	auto strings = std::vector<std::string>{};
 	auto tape = std::vector<Token>{};
 	auto had_overflow = false;
