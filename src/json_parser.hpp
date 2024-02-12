@@ -31,7 +31,7 @@ std::pair<sycl::event, size_t> submit_producer(sycl::queue &q, const std::string
 	const auto input_size = input.size();
 
 	char *in;
-	if ((in = sycl::malloc_device<char>(input_size, q)) == nullptr) {
+	if ((in = sycl::malloc_shared<char>(input_size, q)) == nullptr) {
 		std::cerr << "ERROR: could not allocate space for 'in'\n";
 		std::terminate();
 	}
