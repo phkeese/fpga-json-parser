@@ -69,26 +69,26 @@ std::pair<sycl::event, size_t> submit_producer(sycl::queue &q, const std::string
 }
 
 TapedJson parse(sycl::queue &q, const std::string &input) {
-	std::cout << "Started parsing." << std::endl;
+	// std::cout << "Started parsing." << std::endl;
 
 	const auto [producer_event, cache_line_count] = submit_producer<ProducerId, InPipe>(q, input);
-	std::cout << "Submitted Producer." << std::endl;
+	// std::cout << "Submitted Producer." << std::endl;
 
 	const auto tokenizer_event =
 		submit_tokenizer<TokenizerId, InPipe, TokenizerToStringFilterPipe>(q, cache_line_count);
-	std::cout << "Submitted Tokenizer." << std::endl;
+	// std::cout << "Submitted Tokenizer." << std::endl;
 
 	const auto string_filter_event =
 		submit_string_filter<StringFilterId, TokenizerToStringFilterPipe, OutPipe>(q, cache_line_count);
-	std::cout << "Submitted String FIlter." << std::endl;
+	// std::cout << "Submitted String FIlter." << std::endl;
 
 	auto [consumer_event, output_cache_lines] = submit_consumer<ConsumerId, OutPipe>(q, cache_line_count);
-	std::cout << "Submitted Consumer." << std::endl;
+	// std::cout << "Submitted Consumer." << std::endl;
 
 	consumer_event.wait();
 
 	const auto taped_json = build_tape(cache_line_count, output_cache_lines);
-	std::cout << "Finished Parsing." << std::endl;
+	// std::cout << "Finished Parsing." << std::endl;
 
 	return taped_json;
 }

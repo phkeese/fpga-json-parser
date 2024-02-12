@@ -110,7 +110,7 @@ if (LOWER_BUILD_TYPE MATCHES debug)
         set(DEBUG_FLAGS -g -O0)
     endif ()
 else ()
-    set(DEBUG_FLAGS "")
+    set(DEBUG_FLAGS -O3 -DNDEBUG)
 endif ()
 
 set(COMMON_COMPILE_FLAGS -fsycl -fintelfpga -Wall ${WIN_FLAG} ${DEBUG_FLAGS} ${QACTYPES} ${USER_FLAGS})
