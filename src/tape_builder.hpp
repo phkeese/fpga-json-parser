@@ -8,7 +8,7 @@ template <typename Id, typename OutPipe>
 std::pair<sycl::event, OutputCacheLine *> submit_consumer(sycl::queue &q, const size_t cache_line_count) {
 
 	OutputCacheLine *output_cache_lines;
-	if ((output_cache_lines = sycl::malloc_shared<OutputCacheLine>(cache_line_count, q)) == nullptr) {
+	if ((output_cache_lines = sycl::malloc_device<OutputCacheLine>(cache_line_count, q)) == nullptr) {
 		std::cerr << "ERROR: could not allocate space for 'in'\n";
 		std::terminate();
 	}
