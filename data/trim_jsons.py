@@ -31,7 +31,7 @@ for filename in os.listdir(input_dir):
                 data = convert_numbers_to_strings(data)
                 #print(data)
             with open(json_file_path_strings, 'w') as file2:
-                json.dump(data, file2, indent=4)
+                json.dump(data, file2, indent=0)
         except FileNotFoundError:
             print(f"File '{json_file_path}' not found.")
         except json.JSONDecodeError as e:
