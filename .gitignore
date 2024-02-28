@@ -1,6 +1,8 @@
 # Created by https://www.toptal.com/developers/gitignore/api/c++,clion,cmake
 # Edit at https://www.toptal.com/developers/gitignore?templates=c++,clion,cmake
 
+data/.venv/
+
 ### C++ ###
 # Prerequisites
 *.d
@@ -84,6 +86,8 @@
 cmake-build-*/
 
 /data/processed
+/data/trimmed
+/data/whitespaced
 
 # Mongo Explorer plugin
 .idea/**/mongoSettings.xml
