@@ -158,6 +158,16 @@ class TapedJson {
 		return count;
 	}
 
+	uint64_t count_string_chars() const {
+		auto count = uint64_t{0};
+		for (const auto &s : _strings) {
+			for (const auto c : s) {
+				count += c;
+			}
+		}
+		return count;
+	}
+
 	uint32_t max_depth() const {
 		auto max_depth = uint32_t{0};
 		auto current_depth = uint32_t{0};

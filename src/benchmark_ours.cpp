@@ -58,9 +58,24 @@ static void COUNT_STRING_LENGTHS_FPGA(benchmark::State &state, const std::string
 	}
 }
 
+static void COUNT_STRING_CHARS_FPGA(benchmark::State &state, const std::string &filename) {
+	// Perform setup here
+	auto q = setup_queue();
+	std::ifstream file(filename);
+	const auto input = std::string{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+
+	for (auto _ : state) {
+		const auto json = parse(q, input);
+		auto count = json.count_string_chars();
+		(void)count;
+		//		std::cout << count << std::endl;
+	}
+}
+
 void register_fpga_benchmarks_for(const std::string &dirname, const std::string &filename) {
 	// Register the function as a benchmark
-	benchmark::RegisterBenchmark("fpga::max_depth::" + filename, MAX_DEPTH_FPGA, dirname + filename);
 	benchmark::RegisterBenchmark("fpga::parse::" + filename, ONLY_PARSE_FPGA, dirname + filename);
+	benchmark::RegisterBenchmark("fpga::max_depth::" + filename, MAX_DEPTH_FPGA, dirname + filename);
 	benchmark::RegisterBenchmark("fpga::string_lengths::" + filename, COUNT_STRING_LENGTHS_FPGA, dirname + filename);
+	benchmark::RegisterBenchmark("fpga::string_chars::" + filename, COUNT_STRING_CHARS_FPGA, dirname + filename);
 }
